@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Nöbet Takip</title>
+  <meta name="description" content="24 saatlik nöbetlerin hafta sonu, tatil ve aralık dağılımını takip eden adalet analizi.">
+  <meta name="theme-color" content="#070b16">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    try { const t = JSON.parse(localStorage.getItem('nobetTakip.v1') || '{}').settings?.theme; if (t) document.documentElement.dataset.theme = t; } catch {}
+  </script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M5 7h14"/><path d="M5 7l-3 7a3.5 3.5 0 0 0 6 0z"/><path d="M19 7l-3 7a3.5 3.5 0 0 0 6 0z"/><path d="M8 21h8"/></svg>
+      </div>
+      <div>
+        <h1 id="title">Panel</h1>
+        <div class="sub" id="subtitle">Nöbet Takip</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="themeBtn" aria-label="Tema değiştir"></button>
+    </header>
+    <main id="view"></main>
+  </div>
+
+  <nav class="nav" id="nav">
+    <button data-tab="panel"><span data-icon="gauge"></span>Panel</button>
+    <button data-tab="takvim"><span data-icon="calendar"></span>Takvim</button>
+    <button data-tab="analiz"><span data-icon="chart"></span>Analiz</button>
+    <button data-tab="ayarlar"><span data-icon="settings"></span>Ayarlar</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="vendor/echarts.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
