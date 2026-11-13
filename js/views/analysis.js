@@ -2,7 +2,7 @@ import { mount, colors, grad, axisStyle } from '../charts.js';
 import { DOW_SHORT, DOW_LONG, CATEGORIES, fmtShort, MONTHS } from '../analysis.js';
 import { icon, esc } from '../ui.js';
 import { openDay } from './calendar.js';
-import { tagHtml } from './panel.js';
+import { tagHtml, renderYearBar, ruleCard } from './panel.js';
 
 let cumMode = 'weekend';
 let heatYear = null;
@@ -17,6 +17,8 @@ function card(root, title, hint, body) {
 
 export function renderAnalysis(root, a) {
   const c = colors();
+  if (a.allProfiles.length) renderYearBar(root, a);
+  if (a.allProfiles.length >= 2) root.append(ruleCard(a, true));
   if (a.n < 2) {
     card(root, 'Analiz', '', `<div class="empty">${icon('chart')}<p>Grafikler için en az 2–3 nöbet gir. Takvim sekmesinden geçmiş nöbetlerini işaretleyebilirsin.</p></div>`);
     return;
@@ -74,19 +76,19 @@ export function renderAnalysis(root, a) {
   // 3) Birikimli fark
   if (b) {
     const cum = card(root, null, '', `<div class="card-head"><h2>Zamanla fark açılıyor mu?</h2>
-      <div class="seg" id="cumSeg"><button data-m="weekend">Hafta sonu</button><button data-m="holiday">Tatil</button></div></div>
-      <p class="hint" style="margin-top:6px">Gerçek birikimli saatlerin, adil dağılımda beklenen çizgiyle karşılaştırması. Çizgi ne kadar üstteyse o kadar fazla yük.</p>
+      <div class="seg" id="cumSeg"><button data-m="weekend">Cuma–Pazar</button><button data-m="holiday">Tatil</button></div></div>
+      <p class="hint" style="margin-top:6px">Gerçek birikimli Cuma–Pazar nöbetlerin (veya tatil saatlerin), adil dağılımda beklenen çizgiyle karşılaştırması. Çizgi ne kadar üstteyse o kadar fazla yük.</p>
       <div class="chart" id="cum"></div><div class="chart-note" id="cumNote"></div>`);
     const draw = () => {
       cum.querySelectorAll('#cumSeg button').forEach((x) => x.classList.toggle('on', x.dataset.m === cumMode));
-      const key = cumMode === 'weekend' ? 'weekendH' : 'holidayH';
-      const per = (cumMode === 'weekend' ? b.expWeekendH : b.expHolidayH) / a.n;
+      const hardMode = cumMode === 'weekend';
+      const per = (hardMode ? b.expHard : b.expHolidayH) / a.n;
       let s = 0;
-      const actual = a.profiles.map((p) => (s += p[key]));
+      const actual = a.profiles.map((p) => (s += hardMode ? (p.isHard ? 1 : 0) : p.holidayH));
       const expected = a.profiles.map((_, i) => +(per * (i + 1)).toFixed(1));
       const col = cumMode === 'weekend' ? c.wk : c.bayram;
       const diff = actual[actual.length - 1] - expected[expected.length - 1];
-      cum.querySelector('#cumNote').innerHTML = `Şu an beklenenden <b style="color:${diff > 0 ? c.bad : c.good}">${diff > 0 ? '+' : ''}${Math.round(diff)} saat</b> ${diff > 0 ? 'fazla' : 'az'} ${cumMode === 'weekend' ? 'hafta sonu' : 'tatil'} nöbeti tuttun.`;
+      cum.querySelector('#cumNote').innerHTML = `Şu an beklenenden <b style="color:${diff > 0 ? c.bad : c.good}">${diff > 0 ? '+' : ''}${hardMode ? diff.toFixed(1).replace('.', ',') + ' nöbet' : Math.round(diff) + ' saat'}</b> ${diff > 0 ? 'fazla' : 'az'} ${hardMode ? 'Cuma–Pazar' : 'tatil'} nöbeti tuttun.`;
       const el = cum.querySelector('#cum');
       const old = echarts.getInstanceByDom(el); if (old) old.dispose();
       mount(el, {
@@ -145,6 +147,7 @@ export function renderAnalysis(root, a) {
 
   // 6) Yıllık ısı haritası
   const years = [...new Set(a.shifts.map((s) => s.slice(0, 4)))];
+  if (a.year && years.includes(a.year)) heatYear = a.year;
   if (!heatYear || !years.includes(heatYear)) heatYear = years[years.length - 1];
   const h = card(root, null, '', `<div class="card-head"><h2>Yıl haritası</h2><div class="seg" id="ySeg">${years.slice(-4).map((y) => `<button data-y="${y}">${y}</button>`).join('')}</div></div>
     <p class="hint" style="margin-top:6px">Her satır bir ay, her kare bir gün. Nöbetlerin hangi aylara ve hafta sonlarına yığıldığını bir bakışta gösterir.</p><div class="chart heat" id="heat"></div>
@@ -198,8 +201,8 @@ export function renderAnalysis(root, a) {
 
   // 7) Yıllık özet
   if (a.years.length) {
-    card(root, 'Yıllara göre', '', `<table class="table"><thead><tr><th>Yıl</th><th>Nöbet</th><th>H.sonu</th><th>Tatil</th><th>H.sonu saat</th></tr></thead><tbody>
-      ${a.years.map((y) => `<tr><td><b>${y.year}</b></td><td>${y.count}</td><td>${y.weekend}</td><td>${y.holiday}</td><td>${Math.round(y.weekendH)}</td></tr>`).join('')}</tbody></table>`);
+    card(root, 'Yıllara göre', '', `<table class="table"><thead><tr><th>Yıl</th><th>Nöbet</th><th>Cum–Paz</th><th>Tatil</th><th>Değişim</th><th>İhlal</th></tr></thead><tbody>
+      ${a.years.map((y) => `<tr><td><b>${y.year}</b></td><td>${y.count}</td><td>${y.hard}</td><td>${y.holiday}</td><td>${y.swaps || '—'}</td><td style="color:${y.doubles ? 'var(--bad)' : 'var(--good)'};font-weight:800">${y.doubles || '✓'}</td></tr>`).join('')}</tbody></table>`);
   }
 
   // 8) Geçmiş

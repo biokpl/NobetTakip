@@ -355,3 +355,40 @@ textarea.input { width: 100%; resize: vertical; min-height: 64px; font-weight: 5
   .day { font-size: 13px; border-radius: 10px; }
   .nav button { font-size: 10px; }
 }
+
+/* Değişim */
+.day.swapfrom { outline: 2px dashed var(--accent2); outline-offset: -3px; }
+.tag.swap { background: color-mix(in srgb, var(--accent2) 16%, transparent); color: var(--accent2); }
+.swap-box { background: var(--card-hi); border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-bottom: 12px; }
+.swap-box b { font-size: 13.5px; display: block; }
+.swap-box small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.btn.sm { width: auto; padding: 9px 13px; font-size: 13px; border-radius: 12px; flex: none; }
+
+/* Yıl seçici */
+.yearbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 99px; padding: 8px 13px; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.chip.on { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-color: transparent; }
+
+/* Gün kuralı */
+.rule-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.rule-day { border-radius: 14px; padding: 9px 2px 8px; text-align: center; background: var(--card-hi); border: 1px solid var(--line); position: relative; }
+.rule-day .rd-name { font-size: 11px; font-weight: 800; color: var(--muted); }
+.rule-day .rd-val { font-size: 20px; font-weight: 800; margin: 2px 0 1px; }
+.rule-day .rd-st { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+.rule-day.ok { background: color-mix(in srgb, var(--good) 13%, transparent); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+.rule-day.ok .rd-val, .rule-day.ok .rd-st { color: var(--good); }
+.rule-day.bad { background: color-mix(in srgb, var(--bad) 15%, transparent); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.rule-day.bad .rd-val, .rule-day.bad .rd-st { color: var(--bad); }
+.rule-day.wait { border-style: dashed; }
+.rule-day.wait .rd-val, .rule-day.wait .rd-st { color: var(--faint); }
+.rule-day.miss .rd-val, .rule-day.miss .rd-st { color: var(--mid); }
+.rule-day.hard::before { content: ''; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--wk); }
+.rule-table { width: 100%; border-collapse: separate; border-spacing: 4px; font-size: 12px; }
+.rule-table th { font-size: 10.5px; color: var(--muted); font-weight: 800; }
+.rule-table th.hard { color: var(--wk); }
+.rule-table td { text-align: center; border-radius: 9px; padding: 7px 0; font-weight: 800; background: var(--card-hi); }
+.rule-table td.y { background: transparent; text-align: left; color: var(--text); padding-left: 2px; }
+.rule-table td.c1 { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.rule-table td.c2 { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+.rule-table td.c0 { color: var(--faint); }

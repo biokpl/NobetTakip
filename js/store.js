@@ -2,12 +2,14 @@
 const KEY = 'nobetTakip.v1';
 
 const DEFAULTS = {
-  shifts: [], // { date: 'YYYY-MM-DD', note: '' }
+  shifts: [], // { date: tutulan gün, assigned?: kurumun yazdığı gün (değişim varsa), note }
   settings: {
     startTime: '08:30',
     durationH: 24,
-    shortGap: 28,
-    longGap: 50,
+    shortGap: 35,
+    longGap: 70,
+    viewYear: 'current', // 'current' | 'all' | 'YYYY'
+    basis: 'assigned', // 'assigned' = kurumun yazdığı, 'worked' = tuttuğum
     periodStart: '',
     theme: 'dark',
   },
@@ -23,6 +25,8 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULTS);
     const s = JSON.parse(raw);
+    // eski varsayılan eşikleri (28/50) 1,5–2 aylık düzene göre güncelle
+    if (s.settings && s.settings.shortGap === 28 && s.settings.longGap === 50) { s.settings.shortGap = 35; s.settings.longGap = 70; }
     return {
       ...structuredClone(DEFAULTS),
       ...s,
@@ -55,6 +59,21 @@ export const store = {
     state.shifts = state.shifts.filter((s) => s.date !== date);
     save();
   },
+  // Değişim: 'date' günü tutulan nöbet aslında 'assigned' gününe yazılmıştı
+  setSwap(date, assigned) {
+    const s = this.getShift(date);
+    if (!s) return false;
+    let merged = false;
+    if (assigned && assigned !== date) {
+      // asıl gün ayrıca nöbet olarak kayıtlıysa onu değişime çevir
+      if (state.shifts.some((x) => x.date === assigned)) { state.shifts = state.shifts.filter((x) => x.date !== assigned); merged = true; }
+      s.assigned = assigned;
+    } else delete s.assigned;
+    save();
+    return merged;
+  },
+  swappedFrom: (date) => state.shifts.find((s) => s.assigned === date),
+
   setNote(date, note) {
     const s = this.getShift(date);
     if (s) { s.note = note; save(); }

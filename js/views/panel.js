@@ -1,5 +1,5 @@
 import { mount, colors, levelColor, grad } from '../charts.js';
-import { scoreLevel, fmtDate, fmtShort, dn, todayIso, demoShifts } from '../analysis.js';
+import { scoreLevel, fmtDate, fmtShort, dn, todayIso, demoShifts, DOW_SHORT, DOW_LONG, HARD, dowOf } from '../analysis.js';
 import { icon, esc } from '../ui.js';
 import { store } from '../store.js';
 import { openDay } from './calendar.js';
@@ -11,6 +11,7 @@ export function renderPanel(root, a, app) {
   const c = colors();
   const s = a.scores;
   const lvl = scoreLevel(s?.total);
+  if (a.allProfiles.length) renderYearBar(root, a);
 
   // Puan kartı
   const hero = document.createElement('section');
@@ -21,11 +22,11 @@ export function renderPanel(root, a, app) {
     <div class="gauge" id="gauge"></div>
     <div class="hero-meta"><p>${a.baseline
       ? `${a.n} nöbet, ${fmtShort(a.baseline.from)} ${a.baseline.from.slice(0, 4)} – ${fmtShort(a.baseline.to)} ${a.baseline.to.slice(0, 4)} dönemi, rastgele dağıtımla kıyaslandı`
-      : 'Puan için en az 3 nöbet gir'}</p></div>
+      : a.year && a.allProfiles.length >= 3 ? `${a.year} için puan 3. nöbetten sonra çıkar · "Tümü" ile bütün yılları gör` : 'Puan için en az 3 nöbet gir'}</p></div>
     ${s ? `<div class="subscores">${[
-      ['Hafta sonu yükü', s.weekend, `${Math.round(a.weekendH)} saat · beklenen ≈ ${Math.round(a.baseline.expWeekendH)} saat`],
+      ['Gün kuralı', s.rule, ruleDesc(a)],
+      ['Cuma–Pazar yükü', s.hard, `${a.hardShifts} nöbet · beklenen ≈ ${a.baseline.expHard.toFixed(1)}`],
       ['Tatil yükü', s.holiday, `${Math.round(a.holidayH)} saat · beklenen ≈ ${Math.round(a.baseline.expHolidayH)} saat`],
-      ['Gün dağılımı', s.dow, a.baseline.pDow < 0.2 ? 'Bazı günlerde yığılma var' : 'Günlere dengeli yayılmış'],
       ['Aralık düzeni', s.gap, `${a.gaps.filter((g) => g.kind === 'short').length} kısa aralık · ort. ${Math.round(a.gapMean)} gün`],
     ].map(([name, v, d]) => {
       const col = levelColor(c, scoreLevel(v));
@@ -37,8 +38,11 @@ export function renderPanel(root, a, app) {
   root.append(hero);
   mountGauge(hero.querySelector('#gauge'), s?.total, lvl, c);
 
+  // Gün kuralı
+  if (a.allProfiles.length) root.append(ruleCard(a));
+
   // Boş durum
-  if (!a.n) {
+  if (!a.allProfiles.length) {
     const e = document.createElement('section');
     e.className = 'card';
     e.innerHTML = `<div class="empty">${icon('sparkle')}<div><b style="color:var(--text);font-size:15px">Başlayalım</b></div>
@@ -51,7 +55,7 @@ export function renderPanel(root, a, app) {
   }
 
   // Sonraki nöbet
-  if (a.n) root.append(nextCard(a));
+  if (a.allProfiles.length) root.append(nextCard(a));
 
   // Özet kutucuklar
   if (a.n) {
@@ -61,8 +65,8 @@ export function renderPanel(root, a, app) {
     const minG = a.gaps.length ? Math.min(...a.gaps.map((g) => g.days)) : null;
     const maxG = a.gaps.length ? Math.max(...a.gaps.map((g) => g.days)) : null;
     k.innerHTML = [
-      kpi('Toplam nöbet', a.n, '', `${a.totalH.toLocaleString('tr-TR')} saat`, c.accent),
-      kpi('Hafta sonu', a.weekendShifts, '', b ? `beklenen ≈ ${b.expWeekendShifts.toFixed(1)} · +${a.fridayShifts} Cuma` : `+${a.fridayShifts} Cuma sarkması`, c.wk),
+      kpi('Toplam nöbet', a.n, '', `${a.totalH.toLocaleString('tr-TR')} saat${a.swaps ? ` · ${a.swaps} değişim` : ''}`, c.accent),
+      kpi('Cuma–Pazar', a.hardShifts, '', b ? `beklenen ≈ ${b.expHard.toFixed(1)}` : 'en zor günler', c.wk),
       kpi('Tatile denk', a.holidayShifts, '', b ? `beklenen ≈ ${b.expHolidayShifts.toFixed(1)}` : 'resmi + dini', c.bayram),
       kpi('Ortalama ara', a.gaps.length ? Math.round(a.gapMean) : '—', a.gaps.length ? 'gün' : '', minG != null ? `en kısa ${minG} · en uzun ${maxG}` : 'en az 2 nöbet', c.accent2, true),
     ].join('');
@@ -84,7 +88,7 @@ export function renderPanel(root, a, app) {
   const al = document.createElement('section');
   al.className = 'card';
   al.innerHTML = `<div class="card-head"><h2>Uyarılar ve bilgiler</h2><span class="muted" style="font-size:12px;font-weight:700">${a.alerts.length}</span></div>
-    <p class="hint">Hafta sonu, tatil, aynı gün serileri ve aralıklar sürekli kontrol edilir.</p>
+    <p class="hint">Gün kuralı, Cuma–Pazar, tatiller ve aralıklar sürekli kontrol edilir.</p>
     <div class="alerts">${a.alerts.map((x) => `<div class="alert ${x.level}"><div class="a-ic">${icon(ALERT_ICON[x.level])}</div>
       <div><b>${esc(x.title)}</b><p>${esc(x.text)}</p></div></div>`).join('')}</div>`;
   root.append(al);
@@ -147,14 +151,66 @@ function nextCard(a) {
     p = Math.min(100, ((today - dn(a.last.date)) / Math.max(1, pr.avg)) * 100);
     ring = `<span>${days >= 0 ? days : '?'}<small>${days >= 0 ? 'gün (tahmini)' : 'gecikti'}</small></span>`;
     lbl = 'Tahmini sonraki nöbet'; dt = `${fmtShort(pr.lo)} – ${fmtShort(pr.hi)}`;
-    tags = `<span class="tag">ort. ${Math.round(pr.avg)} gün ara</span><span class="tag wk">${pr.wkDays}/${pr.span} gün hafta sonu</span>` +
+    const cand = pr.candidates.slice(0, 5).map((d) => `<span class="tag ${HARD.has(dowOf(d)) ? 'wk' : 'swap'}">${fmtShort(d)} ${DOW_SHORT[dowOf(d)]}</span>`).join('');
+    tags = `<span class="tag">ort. ${Math.round(pr.avg)} gün ara</span><span class="tag wk">${pr.hardDays}/${pr.span} gün Cuma–Pazar</span>` +
       [...new Set(pr.holidays.filter((h) => h.type !== 'ozel').map((h) => h.group || h.name))].slice(0, 3).map((n) => `<span class="tag hol">${esc(n)}</span>`).join('');
-    extra = '<p class="hint" style="margin:10px 0 0">Kesin tarihi öğrenince takvimden ekle; sayaç ve uyarılar ona göre güncellenir.</p>';
+    extra = (cand ? `<p class="hint" style="margin:12px 0 6px">Gün kuralına göre bu aralıkta uygun günler:</p><div class="tags">${cand}${pr.candidates.length > 5 ? `<span class="tag">+${pr.candidates.length - 5}</span>` : ''}</div>` : '') +
+      '<p class="hint" style="margin:10px 0 0">Kesin tarihi öğrenince takvimden ekle; sayaç ve uyarılar ona göre güncellenir.</p>';
   } else return document.createDocumentFragment();
   el.innerHTML = `<div class="next"><div class="next-ring" style="--p:${p.toFixed(1)}">${ring}</div>
     <div class="next-info"><div class="lbl">${lbl}</div><div class="dt">${dt}</div><div class="tags">${tags}</div></div></div>${extra}`;
   const target = a.current || a.nextPlanned;
   if (target) { el.style.cursor = 'pointer'; el.onclick = () => openDay(target.date); }
+  return el;
+}
+
+function ruleDesc(a) {
+  if (!a.year) { const bad = a.ruleYears.filter((r) => r.doubles.length); return bad.length ? `${bad.length} yılda kural ihlali` : 'Her yıl her gün en fazla 1 kez'; }
+  const r = a.rule;
+  return r.doubles.length ? `${r.doubles.map((i) => DOW_SHORT[i]).join(', ')} 2. kez geldi` : `${r.total}/7 gün doldu, tekrar yok`;
+}
+
+// Yıl seçici + temel seçimi (Panel ve Analiz'de)
+export function renderYearBar(root, a) {
+  const st = store.get().settings;
+  const cur = String(new Date().getFullYear());
+  const sel = st.viewYear === 'all' ? 'all' : st.viewYear === 'current' || !st.viewYear ? cur : String(st.viewYear);
+  const years = a.availableYears.slice(-4).reverse();
+  const bar = document.createElement('div');
+  bar.className = 'yearbar';
+  bar.innerHTML = `<div class="chips">${years.map((y) => `<button class="chip ${sel === y ? 'on' : ''}" data-y="${y}">${y}</button>`).join('')}
+      <button class="chip ${sel === 'all' ? 'on' : ''}" data-y="all">Tümü</button></div>
+    <div class="seg" id="basis" title="Değişimli nöbetler hangi tarihe sayılsın"><button data-b="assigned" class="${a.basis === 'assigned' ? 'on' : ''}">Yazılan</button><button data-b="worked" class="${a.basis === 'worked' ? 'on' : ''}">Tuttuğum</button></div>`;
+  bar.querySelector('.chips').onclick = (e) => {
+    const y = e.target.closest('button')?.dataset.y; if (!y) return;
+    store.setSetting('viewYear', y === 'all' ? 'all' : y === cur ? 'current' : y);
+  };
+  bar.querySelector('#basis').onclick = (e) => { const b = e.target.closest('button')?.dataset.b; if (b) store.setSetting('basis', b); };
+  root.append(bar);
+}
+
+// Gün kuralı kartı: her gün yılda tam 1 kez
+export function ruleCard(a, forceTable = false) {
+  const el = document.createElement('section');
+  el.className = 'card';
+  if (a.year && !forceTable) {
+    const r = a.rule;
+    el.innerHTML = `<div class="card-head"><h2>Gün kuralı · ${r.year}</h2><span class="badge ${r.doubles.length ? 'bad' : 'good'}">${r.doubles.length ? `${r.doubles.length} ihlal` : 'Kurala uygun'}</span></div>
+      <p class="hint">Her gün yılda 1 kez gelmeli. Mor noktalı günler (Cuma–Pazar) en zor günler.</p>
+      <div class="rule-grid">${r.counts.map((c, i) => {
+        const cls = c >= 2 ? 'bad' : c === 1 ? 'ok' : r.complete ? 'miss' : 'wait';
+        const st = c >= 2 ? `${c}. kez!` : c === 1 ? fmtShort(r.dates[i][0]) : r.complete ? 'gelmedi' : 'bekliyor';
+        return `<div class="rule-day ${cls} ${HARD.has(i) ? 'hard' : ''}" title="${DOW_LONG[i]}"><div class="rd-name">${DOW_SHORT[i]}</div><div class="rd-val">${c}</div><div class="rd-st">${st}</div></div>`;
+      }).join('')}</div>
+      <p class="chart-note" style="margin-top:10px">${r.complete
+        ? `${r.year} tamamlandı: ${r.total} nöbet.`
+        : r.missing.length ? `Kalan: <b>${r.missing.map((i) => DOW_LONG[i]).join(', ')}</b>. Kural işliyorsa bu yılki sonraki nöbetin bunlardan birine gelmeli.` : 'Bu yıl 7 günün hepsi doldu; yeni nöbet gelirse tekrar sayılır.'}</p>`;
+  } else {
+    const rows = a.ruleYears.filter((r) => r.total);
+    el.innerHTML = `<h2>Gün kuralı · yıllara göre</h2><p class="hint">Her hücre o yıl o güne kaç nöbet geldiğini gösterir. Kurala göre hepsi 1 olmalı; kırmızı = aynı gün ikinci kez.</p>
+      <table class="rule-table"><thead><tr><th></th>${DOW_SHORT.map((d, i) => `<th class="${HARD.has(i) ? 'hard' : ''}">${d}</th>`).join('')}</tr></thead><tbody>
+      ${rows.map((r) => `<tr><td class="y">${r.year}</td>${r.counts.map((c, i) => `<td class="c${Math.min(c, 2)}" title="${r.dates[i].map(fmtShort).join(', ')}">${c || '·'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  }
   return el;
 }
 

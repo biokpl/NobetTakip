@@ -122,8 +122,10 @@ export function renderSettings(root, a, app) {
   // Yöntem
   section(root, `<h2>Puan nasıl hesaplanıyor?</h2>
     <p class="hint" style="margin:0">Uygulama, girdiğin dönem boyunca nöbetlerin <b style="color:var(--text)">rastgele ve eşit dağıtılsaydı</b> neye benzeyeceğini 3000 kez simüle eder.
-    Senin hafta sonu ve tatil saatlerin bu simülasyonların ne kadarından yüksekse puan o kadar düşer. Böylece az nöbetle bile "şans eseri mi, gerçekten fazla mı?" sorusu yanıtlanır.
-    Toplam puan: hafta sonu %35, tatil %30, gün dağılımı %20, aralık düzeni %15.
+    Senin Cuma–Pazar nöbetlerin ve tatil saatlerin bu simülasyonların ne kadarından yüksekse puan o kadar düşer. Böylece az nöbetle bile "şans eseri mi, gerçekten fazla mı?" sorusu yanıtlanır.
+    <b style="color:var(--text)">Gün kuralı:</b> her gün yılda 1 kez gelmeli; aynı gün ikinci kez gelirse puan düşer (Cuma–Pazar ise daha çok). Kayıtlar her yıl baştan sayılır.
+    Toplam puan: gün kuralı %30, Cuma–Pazar %30, tatil %25, aralık düzeni %15.
+    <b style="color:var(--text)">Değişimler:</b> "Yazılan" seçiliyken kurumun yazdığı gün, "Tuttuğum" seçiliyken fiilen tuttuğun gün sayılır. Sıralamanın adil olup olmadığını "Yazılan" gösterir.
     Nöbet 24 saat sürdüğü için saatler gün gün bölünür: Cuma nöbetinin 8,5 saati Cumartesiye, arife nöbetinin akşamı bayrama sayılır.</p>`);
 }
 

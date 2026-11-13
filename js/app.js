@@ -34,13 +34,14 @@ function applyTheme() {
 }
 
 function subtitle(a) {
-  if (!a.n) return 'Nöbet Takip';
-  return `${a.n} nöbet · ${a.shifts[0].slice(0, 4)}–${a.shifts[a.n - 1].slice(0, 4)}`;
+  if (!a.allProfiles.length) return 'Nöbet Takip';
+  return `${a.year ? a.year : 'Tüm yıllar'} · ${a.n} nöbet · ${a.basis === 'assigned' ? 'kurumun yazdığı' : 'tuttuğum günler'}`;
 }
 
 function refresh({ keepScroll = true } = {}) {
   const y = window.scrollY;
-  analysis = analyze(store.get());
+  const st = store.get();
+  analysis = analyze(st, { year: st.settings.viewYear, basis: st.settings.basis });
   disposeAll();
   const v = VIEWS[current];
   document.getElementById('title').textContent = v.title;

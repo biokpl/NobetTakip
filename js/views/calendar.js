@@ -11,7 +11,8 @@ const TYPE_COLOR = { resmi: 'var(--hol)', dini: 'var(--bayram)', arife: 'var(--b
 export function renderCalendar(root, a) {
   if (!ym) { const t = new Date(); ym = [t.getFullYear(), t.getMonth()]; }
   const [Y, M] = ym;
-  const shiftSet = new Set(a.shifts);
+  const shiftSet = new Set(store.get().shifts.map((x) => x.date)); // fiilen tutulan günler
+  const swapSet = new Set(store.get().shifts.filter((x) => x.assigned).map((x) => x.assigned)); // değişen asıl günler
   const today = todayIso();
   const first = iso(Y, M + 1, 1);
   const startDn = dn(first) - dowOf(first);
@@ -34,6 +35,7 @@ export function renderCalendar(root, a) {
     const isShift = shiftSet.has(d);
     if (isShift) cls.push('shift');
     else if (shiftSet.has(addDaysIso(d, -1))) cls.push('spill');
+    if (!isShift && swapSet.has(d)) cls.push('swapfrom');
     if (inMonth) {
       if (isShift) mShifts++;
       if (dw >= 5) mWk++;
@@ -52,7 +54,7 @@ export function renderCalendar(root, a) {
       <button class="icon-btn" id="todayBtn" aria-label="Bugüne git" style="width:auto;padding:0 12px;font-size:12.5px;font-weight:800">Bugün</button>
       <button class="icon-btn" id="next" aria-label="Sonraki ay">${icon('right')}</button>
     </div>
-    <div class="cal-grid">${DOW_SHORT.map((d, i) => `<div class="cal-dow ${i >= 5 ? 'we' : ''}">${d}</div>`).join('')}${cells}</div>
+    <div class="cal-grid">${DOW_SHORT.map((d, i) => `<div class="cal-dow ${i >= 4 ? 'we' : ''}">${d}</div>`).join('')}${cells}</div>
     <div class="legend">
       <span><i style="background:linear-gradient(135deg,var(--accent),var(--accent2))"></i>Nöbet</span>
       <span><i style="background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 55%,transparent),transparent 70%)"></i>Sabaha sarkan</span>
@@ -60,6 +62,7 @@ export function renderCalendar(root, a) {
       <span><i style="background:var(--bayram)"></i>Bayram/arife</span>
       <span><i style="background:var(--hol)"></i>Resmi tatil</span>
       <span><i style="background:var(--night);border-radius:50%"></i>Kandil gecesi</span>
+      <span><i style="outline:2px dashed var(--accent2);outline-offset:-2px"></i>Değiştirilen asıl gün</span>
     </div>
     <div class="month-stats">
       <div><b>${mShifts}</b><span>bu ay nöbet</span></div>
@@ -136,12 +139,14 @@ function timeline(p, settings) {
 
 export function openDay(date) {
   const st = store.get();
-  const a = analyze(st);
+  const a = analyze(st, { year: 'all', basis: 'worked' });
   const ents = a.hmap.get(date) || [];
   const isShift = store.hasShift(date);
-  const p = isShift ? a.profiles.find((x) => x.date === date) : shiftProfile(date, st.settings, a.hmap);
-  const prevShift = [...a.shifts].reverse().find((d) => d < date);
-  const nextShift = a.shifts.find((d) => d > date);
+  const p = isShift ? a.allProfiles.find((x) => x.date === date) : shiftProfile(date, st.settings, a.hmap);
+  const workedDates = a.allProfiles.map((x) => x.date);
+  const prevShift = [...workedDates].reverse().find((d) => d < date);
+  const nextShift = workedDates.find((d) => d > date);
+  const swapTo = !isShift ? store.swappedFrom(date) : null;
   const gapPrev = prevShift ? dn(date) - dn(prevShift) : null;
   const gapNext = nextShift ? dn(nextShift) - dn(date) : null;
   const spillFrom = store.hasShift(addDaysIso(date, -1)) ? addDaysIso(date, -1) : null;
@@ -153,6 +158,8 @@ export function openDay(date) {
     <h3>${fmtDate(date, false)}</h3>
     <div class="sh-sub">${['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][dw]} · ${dw >= 5 ? 'Hafta sonu' : 'Hafta içi'}${isShift ? ' · <b style="color:var(--accent)">Nöbet günü</b>' : ''}</div>
     ${ents.length ? `<div class="hol-list">${ents.map((h) => `<div class="hol-item"><i style="background:${TYPE_COLOR[h.type]}"></i><span style="flex:1">${esc(h.name)}</span><span class="muted" style="font-size:12px">${TYPE_LABEL[h.type] || ''}</span></div>`).join('')}</div>` : ''}
+    ${swapTo ? `<div class="alert info" style="margin-bottom:12px"><div class="a-ic">${icon('swap')}</div><div><b>Bu günkü nöbet değiştirildi</b><p>Kurum bu güne yazmıştı; ${fmtDate(swapTo.date)} tutuldu.</p></div></div>
+      <button class="btn ghost" id="goSwap" style="margin-bottom:10px">${fmtDate(swapTo.date, false)} gününe git</button>` : ''}
     ${spillFrom && !isShift ? `<div class="alert info" style="margin:10px 0"><div class="a-ic">${icon('clock')}</div><div><b>Önceki günün nöbeti sarkıyor</b><p>${fmtDate(spillFrom)} nöbeti bu güne ${st.settings.startTime}'a kadar devam ediyor.</p></div></div>` : ''}
     <div style="margin-top:14px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">${isShift ? 'Bu nöbetin dağılımı' : 'Bu güne nöbet eklenirse'}</div>
     ${timeline(p, st.settings)}
@@ -162,8 +169,14 @@ export function openDay(date) {
       <div><b style="color:${warnGap(gapPrev) ? 'var(--bad)' : 'var(--text)'}">${gapPrev ?? '—'}</b><span>gün önceki nöbetten</span></div>
     </div>
     ${p.tags.length ? `<div class="tags" style="margin-bottom:12px">${tagHtml(p.tags)}</div>` : ''}
-    ${!isShift && (warnGap(gapPrev) || warnGap(gapNext)) ? `<div class="alert warn" style="margin-bottom:12px"><div class="a-ic">${icon('alert')}</div><div><b>Kısa aralık</b><p>${warnGap(gapPrev) ? `Önceki nöbetten ${gapPrev} gün sonra. ` : ''}${warnGap(gapNext) ? `Sonraki nöbete ${gapNext} gün kalıyor.` : ''} (eşik ${short} gün)</p></div></div>` : ''}
-    ${isShift ? `<label style="font-size:13px;font-weight:700;display:block;margin:6px 0 6px">Not</label>
+    ${!isShift && !swapTo && (warnGap(gapPrev) || warnGap(gapNext)) ? `<div class="alert warn" style="margin-bottom:12px"><div class="a-ic">${icon('alert')}</div><div><b>Kısa aralık</b><p>${warnGap(gapPrev) ? `Önceki nöbetten ${gapPrev} gün sonra. ` : ''}${warnGap(gapNext) ? `Sonraki nöbete ${gapNext} gün kalıyor.` : ''} (eşik ${short} gün)</p></div></div>` : ''}
+    ${isShift ? `<div class="swap-box">
+        ${p.swapped
+          ? `<div class="row-between"><div><b>Değişimle tutuldu</b><small>Asıl yazılan gün: ${fmtDate(p.assigned)}</small></div><button class="btn ghost sm" id="unswap">Kaldır</button></div>`
+          : `<div class="row-between"><div><b>Değişim yaptın mı?</b><small>Başka bir günle değiştirdiysen kurumun yazdığı günü gir.</small></div><button class="btn ghost sm" id="swapBtn">${icon('swap')}Değişim</button></div>
+             <div id="swapForm" hidden style="margin-top:10px;grid-template-columns:1fr auto;gap:8px"><input type="date" class="input" id="asg"><button class="btn primary sm" id="swapSave">Kaydet</button></div>`}
+      </div>
+      <label style="font-size:13px;font-weight:700;display:block;margin:6px 0 6px">Not</label>
       <textarea class="input" id="note" placeholder="Örn. değişim yapıldı, yerine tutuldu…">${esc(p.note || '')}</textarea>
       <div class="btn-row" style="margin-top:12px"><button class="btn ghost" id="close">Kapat</button><button class="btn danger" id="del">${icon('trash')}Nöbeti sil</button></div>`
       : `<div class="btn-row"><button class="btn ghost" id="close">Kapat</button><button class="btn primary" id="add">${icon('plus')}Nöbet ekle</button></div>`}
@@ -177,6 +190,20 @@ export function openDay(date) {
       if (del.dataset.sure) { store.removeShift(date); closeSheet(); toast('Nöbet silindi'); }
       else { del.dataset.sure = '1'; del.innerHTML = `${icon('trash')}Emin misin? Tekrar dokun`; }
     };
+    const goSwap = sh.querySelector('#goSwap');
+    if (goSwap) goSwap.onclick = () => { setMonth(swapTo.date); openDay(swapTo.date); };
+    const swapBtn = sh.querySelector('#swapBtn');
+    if (swapBtn) swapBtn.onclick = () => { const f = sh.querySelector('#swapForm'); f.hidden = false; f.style.display = 'grid'; sh.querySelector('#asg').focus(); };
+    const swapSave = sh.querySelector('#swapSave');
+    if (swapSave) swapSave.onclick = () => {
+      const v = sh.querySelector('#asg').value;
+      if (!v || v === date) return toast('Kurumun yazdığı farklı bir gün seç');
+      const merged = store.setSwap(date, v);
+      closeSheet();
+      toast(merged ? `${v.split('-').reverse().join('.')} kaydı değişime çevrildi` : 'Değişim kaydedildi');
+    };
+    const unswap = sh.querySelector('#unswap');
+    if (unswap) unswap.onclick = () => { store.setSwap(date, null); closeSheet(); toast('Değişim kaldırıldı'); };
     const note = sh.querySelector('#note');
     if (note) note.onchange = () => { store.setNote(date, note.value.trim()); toast('Not kaydedildi'); };
   });

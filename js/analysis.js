@@ -69,7 +69,7 @@ export function shiftProfile(date, settings, hmap) {
   const dow = dowOf(date);
   const tags = [];
   if (dow === 5 || dow === 6) tags.push({ t: 'Hafta sonu', c: 'wk' });
-  else if (weekendH > 0) tags.push({ t: 'Hafta sonuna sarkıyor', c: 'wk2' });
+  else if (dow === 4) tags.push({ t: 'Cuma · hafta sonuna sarkıyor', c: 'wk' });
   if (dow === 6 && weekendH < 24) tags.push({ t: 'Pazartesiye sarkıyor', c: 'muted' });
   for (const c of cats) tags.push({ t: c, c: c === 'Kandil gecesi' || c === 'Yılbaşı gecesi' ? 'night' : 'hol' });
   return {
@@ -95,183 +95,237 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const pScore = (p) => Math.round(100 * Math.sqrt(Math.min(1, 2 * p)));
 export const scoreLevel = (s) => (s == null ? 'none' : s >= 65 ? 'good' : s >= 40 ? 'mid' : 'bad');
 
-export function analyze(state, now = new Date()) {
+export const HARD = new Set([4, 5, 6]); // Cuma, Cumartesi, Pazar — en zor günler
+export const yearOf = (opts, now = new Date()) => (!opts || opts.year == null || opts.year === 'current' ? String(now.getFullYear()) : opts.year === 'all' ? null : String(opts.year));
+
+// Kayıtları seçilen temele göre tarihle: 'assigned' = kurumun yazdığı tarih, 'worked' = fiilen tutulan tarih
+export function shiftEntries(state, basis = 'assigned') {
+  return state.shifts
+    .map((s) => ({ date: basis === 'assigned' ? (s.assigned || s.date) : s.date, worked: s.date, assigned: s.assigned || s.date, swapped: !!s.assigned && s.assigned !== s.date, note: s.note || '' }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function withMeta(p, e, basis) {
+  const tags = p.tags.slice();
+  if (e.swapped) tags.unshift({ t: basis === 'assigned' ? `Değişim → ${fmtShort(e.worked)} tutuldu` : `Değişim (asıl ${fmtShort(e.assigned)})`, c: 'swap' });
+  return { ...p, tags, worked: e.worked, assigned: e.assigned, swapped: e.swapped, note: e.note, isHard: HARD.has(p.dow) };
+}
+
+// Gün kuralı: her gün yılda tam 1 kez
+export function ruleOfYear(year, profiles, now = new Date()) {
+  const counts = Array(7).fill(0);
+  const dates = Array.from({ length: 7 }, () => []);
+  profiles.filter((p) => p.date.startsWith(year)).forEach((p) => { counts[p.dow]++; dates[p.dow].push(p.date); });
+  const complete = Number(year) < now.getFullYear();
+  return {
+    year, counts, dates, complete, total: counts.reduce((a, b) => a + b, 0),
+    doubles: counts.map((c, i) => (c >= 2 ? i : null)).filter((x) => x != null),
+    missing: counts.map((c, i) => (c === 0 ? i : null)).filter((x) => x != null),
+  };
+}
+
+export function analyze(state, opts = {}, now = new Date()) {
   const { settings } = state;
-  const shifts = state.shifts.map((s) => s.date).sort();
+  const basis = opts.basis || 'assigned';
+  const year = yearOf(opts, now);
   const today = todayIso();
-  const y0 = Math.min(shifts.length ? Number(shifts[0].slice(0, 4)) : now.getFullYear(), now.getFullYear()) - 1;
-  const y1 = Math.max(shifts.length ? Number(shifts[shifts.length - 1].slice(0, 4)) : now.getFullYear(), now.getFullYear()) + 2;
+  const entries = shiftEntries(state, basis);
+  const yrs = entries.map((e) => Number(e.date.slice(0, 4))).concat(state.shifts.map((s) => Number(s.date.slice(0, 4))));
+  const y0 = Math.min(...yrs, now.getFullYear()) - 1;
+  const y1 = Math.max(...yrs, now.getFullYear()) + 2;
   const hmap = buildHolidayMap(y0, y1, state.customHolidays, state.hiddenHolidays);
-  const profiles = shifts.map((d) => ({ ...shiftProfile(d, settings, hmap), note: (state.shifts.find((s) => s.date === d) || {}).note || '' }));
+  const allProfiles = entries.map((e) => withMeta(shiftProfile(e.date, settings, hmap), e, basis));
+  const profiles = year ? allProfiles.filter((p) => p.date.startsWith(year)) : allProfiles;
+  const shifts = profiles.map((p) => p.date);
   const n = profiles.length;
 
-  // Aralıklar
-  const gaps = [];
-  for (let i = 1; i < n; i++) gaps.push({ from: shifts[i - 1], to: shifts[i], days: dn(shifts[i]) - dn(shifts[i - 1]) });
+  // Aralıklar (yılın ilk nöbeti önceki yılın son nöbetiyle kıyaslanır)
+  const allGaps = [];
+  for (let i = 1; i < allProfiles.length; i++) {
+    const a = allProfiles[i - 1].date, b = allProfiles[i].date;
+    allGaps.push({ from: a, to: b, days: dn(b) - dn(a) });
+  }
+  allGaps.forEach((g) => { g.kind = g.days < settings.shortGap ? 'short' : g.days > settings.longGap ? 'long' : 'normal'; });
+  const gaps = year ? allGaps.filter((g) => g.to.startsWith(year)) : allGaps;
   const gapDays = gaps.map((g) => g.days);
   const gapMean = mean(gapDays), gapStd = std(gapDays);
-  gaps.forEach((g) => { g.kind = g.days < settings.shortGap ? 'short' : g.days > settings.longGap ? 'long' : 'normal'; });
+  const allGapDays = allGaps.map((g) => g.days);
 
-  // Gün dağılımı
   const dowCounts = Array(7).fill(0);
   profiles.forEach((p) => dowCounts[p.dow]++);
 
-  // Toplam saatler
   const totalH = n * (settings.durationH || 24);
   const weekendH = profiles.reduce((s, p) => s + p.weekendH, 0);
   const holidayH = profiles.reduce((s, p) => s + p.holidayH, 0);
   const weekendShifts = profiles.filter((p) => p.isWeekend).length;
-  const fridayShifts = profiles.filter((p) => p.dow === 4).length;
+  const hardShifts = profiles.filter((p) => p.isHard).length;
   const holidayShifts = profiles.filter((p) => p.isHoliday).length;
+  const swaps = profiles.filter((p) => p.swapped).length;
   const catCounts = Object.fromEntries(CATEGORIES.map((c) => [c, profiles.filter((p) => p.cats.includes(c)).length]));
+
+  // Gün kuralı
+  const availableYears = [...new Set(allProfiles.map((p) => p.date.slice(0, 4)).concat(String(now.getFullYear())))].sort();
+  const ruleYears = availableYears.map((y) => ruleOfYear(y, allProfiles, now));
+  const rule = ruleYears.find((r) => r.year === (year || String(now.getFullYear())));
 
   // Rastgele dağıtım ile kıyas (Monte Carlo)
   let baseline = null;
   if (n >= 3) {
-    const from = settings.periodStart && settings.periodStart < shifts[0] ? settings.periodStart : shifts[0];
-    const to = shifts[n - 1];
+    let from, to;
+    if (year) {
+      const ps = settings.periodStart;
+      from = ps && ps.startsWith(year) ? ps : `${year}-01-01`;
+      const end = `${year}-12-31`;
+      to = year === String(now.getFullYear()) && today > shifts[n - 1] ? today : shifts[n - 1];
+      if (to > end) to = end;
+    } else {
+      from = settings.periodStart && settings.periodStart < shifts[0] ? settings.periodStart : shifts[0];
+      to = shifts[n - 1];
+    }
     const d0 = dn(from), d1 = dn(to);
     const days = [];
     for (let d = d0; d <= d1; d++) days.push(shiftProfile(fromDn(d), settings, hmap));
-    const wk = days.map((p) => p.weekendH), hol = days.map((p) => p.holidayH), dw = days.map((p) => p.dow);
+    const hard = days.map((p) => (HARD.has(p.dow) ? 1 : 0)), hol = days.map((p) => p.holidayH), dw = days.map((p) => p.dow);
     const dowFrac = Array(7).fill(0); dw.forEach((x) => dowFrac[x]++); dowFrac.forEach((_, i) => (dowFrac[i] /= days.length));
     const catFrac = Object.fromEntries(CATEGORIES.map((c) => [c, days.filter((p) => p.cats.includes(c)).length / days.length]));
-    const tv = (counts) => counts.reduce((s, c, i) => s + Math.abs(c - n * dowFrac[i]), 0) / (2 * n);
-    const obsTV = tv(dowCounts);
     const rand = rng(n * 7919 + d0 * 31 + d1);
     const SIMS = 3000;
-    let geWk = 0, geHol = 0, geTV = 0;
-    const simWk = [];
+    let geHard = 0, geHol = 0;
     for (let s = 0; s < SIMS; s++) {
-      let sw = 0, sh = 0; const cnt = Array(7).fill(0);
-      for (let i = 0; i < n; i++) {
-        const k = (rand() * days.length) | 0;
-        sw += wk[k]; sh += hol[k]; cnt[dw[k]]++;
-      }
-      simWk.push(sw);
-      if (sw >= weekendH - 1e-9) geWk++;
-      if (sh >= holidayH - 1e-9) geHol++;
-      if (tv(cnt) >= obsTV - 1e-9) geTV++;
+      let sh = 0, sl = 0;
+      for (let i = 0; i < n; i++) { const k = (rand() * days.length) | 0; sh += hard[k]; sl += hol[k]; }
+      if (sh >= hardShifts) geHard++;
+      if (sl >= holidayH - 1e-9) geHol++;
     }
     baseline = {
       from, to, days: days.length,
-      expWeekendH: mean(wk) * n, expHolidayH: mean(hol) * n,
+      expHard: mean(hard) * n, expHolidayH: mean(hol) * n,
+      expWeekendH: mean(days.map((p) => p.weekendH)) * n,
       expDow: dowFrac.map((f) => f * n),
-      expWeekendShifts: days.filter((p) => p.isWeekend).length / days.length * n,
       expHolidayShifts: days.filter((p) => p.isHoliday).length / days.length * n,
       expCat: Object.fromEntries(CATEGORIES.map((c) => [c, catFrac[c] * n])),
-      pWeekend: geWk / SIMS, pHoliday: geHol / SIMS, pDow: geTV / SIMS,
-      obsTV,
+      pHard: geHard / SIMS, pHoliday: geHol / SIMS,
     };
   }
 
   // Puanlar
+  const ruleScoreOf = (r) => clamp(100 - r.counts.reduce((s, c, i) => s + Math.max(0, c - 1) * (HARD.has(i) ? 40 : 25), 0) - (r.complete ? r.missing.length * 10 : 0), 0, 100);
   let scores = null;
   if (baseline) {
     const shortCount = gaps.filter((g) => g.kind === 'short').length;
     const cv = gapMean ? gapStd / gapMean : 0;
-    const gapScore = Math.round(clamp(100 - 30 * shortCount - Math.max(0, cv - 0.3) * 120, 0, 100));
+    const relevant = year ? [rule] : ruleYears.filter((r) => r.total > 0);
     const s = {
-      dow: pScore(baseline.pDow),
-      weekend: pScore(baseline.pWeekend),
+      hard: pScore(baseline.pHard),
       holiday: pScore(baseline.pHoliday),
-      gap: gapScore,
+      rule: Math.round(mean(relevant.map(ruleScoreOf))),
+      gap: Math.round(clamp(100 - 30 * shortCount - Math.max(0, cv - 0.3) * 120, 0, 100)),
     };
-    s.total = Math.round(0.2 * s.dow + 0.35 * s.weekend + 0.3 * s.holiday + 0.15 * s.gap);
+    s.total = Math.round(0.3 * s.hard + 0.25 * s.holiday + 0.3 * s.rule + 0.15 * s.gap);
+    // Kural ihlali varsa toplam puan "adil" görünemez: Cuma–Pazar ihlalinde en fazla 50, diğerlerinde 64
+    const dbl = relevant.flatMap((r) => r.doubles);
+    if (dbl.some((i) => HARD.has(i))) s.total = Math.min(s.total, 50);
+    else if (dbl.length) s.total = Math.min(s.total, 64);
     scores = s;
   }
 
-  // Şu anki / sonraki nöbet
+  // Şu anki / sonraki nöbet: her zaman fiilen tutulan tarihlere göre
   const [hh, mm] = (settings.startTime || '08:30').split(':').map(Number);
   const startOf = (d) => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd, hh, mm); };
   const durMs = (settings.durationH || 24) * 3600e3;
-  const current = profiles.find((p) => { const s = startOf(p.date); return now >= s && now < new Date(+s + durMs); }) || null;
-  const nextPlanned = profiles.find((p) => startOf(p.date) > now) || null;
-  const past = profiles.filter((p) => startOf(p.date) <= now);
+  const worked = shiftEntries(state, 'worked').map((e) => withMeta(shiftProfile(e.date, settings, hmap), e, 'worked'));
+  const current = worked.find((p) => { const s = startOf(p.date); return now >= s && now < new Date(+s + durMs); }) || null;
+  const nextPlanned = worked.find((p) => startOf(p.date) > now) || null;
+  const past = worked.filter((p) => startOf(p.date) <= now);
   const last = past[past.length - 1] || null;
 
   let prediction = null;
   if (last && !nextPlanned) {
-    const m = n >= 2 ? gapMean : 40;
-    const w = Math.max(4, Math.round(n >= 3 ? gapStd : 7));
+    const m = allGapDays.length ? mean(allGapDays) : 50;
+    const w = Math.max(5, Math.round(allGapDays.length >= 3 ? std(allGapDays) : 10));
     const center = dn(last.date) + Math.round(m);
     const lo = center - w, hi = center + w;
     const inWindow = [];
-    let wkDays = 0;
+    let hardDays = 0;
+    const remaining = {};
+    const candidates = [];
     for (let d = lo; d <= hi; d++) {
       const s = fromDn(d);
-      if (dowOf(s) >= 5) wkDays++;
+      const y = s.slice(0, 4);
+      remaining[y] = remaining[y] || ruleOfYear(y, allProfiles, now).missing;
+      if (HARD.has(dowOf(s))) hardDays++;
       for (const h of hmap.get(s) || []) if (h.type !== 'kandil') inWindow.push({ date: s, ...h });
+      if (remaining[y].includes(dowOf(s))) candidates.push(s);
     }
-    prediction = { center: fromDn(center), lo: fromDn(lo), hi: fromDn(hi), avg: m, wkDays, span: hi - lo + 1, holidays: inWindow, profile: shiftProfile(fromDn(center), settings, hmap) };
+    prediction = { center: fromDn(center), lo: fromDn(lo), hi: fromDn(hi), avg: m, hardDays, span: hi - lo + 1, holidays: inWindow, candidates, profile: shiftProfile(fromDn(center), settings, hmap) };
   }
 
-  // Uyarılar
-  const alerts = buildAlerts({ profiles, gaps, settings, baseline, dowCounts, catCounts, prediction, nextPlanned, n });
+  const alerts = buildAlerts({ profiles, gaps, settings, baseline, catCounts, prediction, nextPlanned, n, year, rule, ruleYears, hardShifts, holidayShifts });
 
-  // Yıllık özet
-  const years = {};
-  profiles.forEach((p) => {
-    const y = p.date.slice(0, 4);
-    years[y] = years[y] || { year: y, count: 0, weekend: 0, holiday: 0, weekendH: 0, holidayH: 0 };
-    const Y = years[y];
-    Y.count++; if (p.isWeekend) Y.weekend++; if (p.isHoliday) Y.holiday++;
-    Y.weekendH += p.weekendH; Y.holidayH += p.holidayH;
+  const years = ruleYears.filter((r) => r.total > 0).map((r) => {
+    const ps = allProfiles.filter((p) => p.date.startsWith(r.year));
+    return {
+      year: r.year, count: ps.length, hard: ps.filter((p) => p.isHard).length, weekend: ps.filter((p) => p.isWeekend).length,
+      holiday: ps.filter((p) => p.isHoliday).length, weekendH: ps.reduce((s, p) => s + p.weekendH, 0), holidayH: ps.reduce((s, p) => s + p.holidayH, 0),
+      swaps: ps.filter((p) => p.swapped).length, doubles: r.doubles.length,
+    };
   });
 
   return {
-    n, shifts, profiles, gaps, gapMean, gapStd, dowCounts, totalH, weekendH, holidayH,
-    weekendShifts, fridayShifts, holidayShifts, catCounts, baseline, scores, current, nextPlanned, last,
-    settings, prediction, alerts, years: Object.values(years).sort((a, b) => a.year.localeCompare(b.year)), hmap, today,
+    n, year, basis, shifts, profiles, allProfiles, gaps, gapMean, gapStd, dowCounts, totalH, weekendH, holidayH,
+    weekendShifts, hardShifts, holidayShifts, swaps, catCounts, baseline, scores, current, nextPlanned, last, rule, ruleYears,
+    settings, prediction, alerts, years, hmap, today, availableYears,
   };
 }
 
 function pct(p) { return p < 0.01 ? '%1\'den az' : '%' + Math.round(p * 100); }
+const dowList = (arr) => arr.map((i) => DOW_LONG[i]).join(', ');
 
-function buildAlerts({ profiles, gaps, settings, baseline, dowCounts, catCounts, prediction, nextPlanned, n }) {
+function buildAlerts({ profiles, gaps, settings, baseline, catCounts, prediction, nextPlanned, n, year, rule, ruleYears, hardShifts, holidayShifts }) {
   const A = [];
   const push = (level, title, text) => A.push({ level, title, text });
-  if (n === 0) { push('info', 'Henüz nöbet girilmedi', 'Takvim sekmesinden geçmiş nöbet günlerine dokunarak eklemeye başla. En az 3 nöbetten sonra adalet analizi açılır.'); return A; }
-  if (n < 3) push('info', 'Analiz için biraz daha veri', `${n} nöbet girildi. Adalet puanı için en az 3 nöbet gerekiyor; ne kadar çok geçmiş girersen sonuç o kadar güvenilir olur.`);
+  if (!ruleYears.some((r) => r.total)) { push('info', 'Henüz nöbet girilmedi', 'Takvim sekmesinden geçmiş nöbet günlerine dokunarak eklemeye başla. En az 3 nöbetten sonra adalet puanı açılır.'); return A; }
+  if (n < 3) push('info', year ? `${year} için puan henüz yok` : 'Analiz için biraz daha veri', `${n} nöbet var. Puan için en az 3 nöbet gerekiyor${year ? '; üstten "Tümü"nü seçerek bütün yılları birlikte görebilirsin' : ''}.`);
+
+  // Gün kuralı
+  const checkYears = year ? [rule] : ruleYears.filter((r) => r.total > 0);
+  for (const r of checkYears) {
+    for (const i of r.doubles) {
+      const hard = HARD.has(i);
+      push(hard ? 'danger' : 'warn', `Kural ihlali: ${r.year}'de ${DOW_LONG[i]} ${r.counts[i]}. kez`,
+        `Kurala göre her gün yılda 1 kez gelmeli. ${DOW_LONG[i]} günleri: ${r.dates[i].map(fmtShort).join(', ')}.${hard ? ' Cuma–Pazar en zor günlerden.' : ''}`);
+    }
+    if (r.complete && r.missing.length && r.total) push('info', `${r.year}'de hiç gelmeyen gün: ${dowList(r.missing)}`, 'Yıl tamamlanmış; bu günlere hiç nöbet yazılmamış.');
+  }
+  if (rule && !rule.complete && rule.total && rule.missing.length) {
+    push('info', `${rule.year}'de kalan günler: ${rule.missing.map((i) => DOW_SHORT[i]).join(', ')}`, `Kural işliyorsa bu yılki sonraki nöbetin bu günlerden birine gelmeli.${rule.missing.some((i) => HARD.has(i)) ? ' Kalanlar arasında Cuma–Pazar günü var.' : ''}`);
+  }
 
   if (baseline) {
-    const ratio = baseline.expWeekendH ? (profiles.reduce((s, p) => s + p.weekendH, 0) / baseline.expWeekendH) : 0;
-    if (baseline.pWeekend < 0.05) push('danger', 'Hafta sonu yükün belirgin şekilde fazla', `Hafta sonu nöbet saatin beklenenin ${ratio.toFixed(1)} katı. Nöbetler rastgele dağıtılsaydı bu kadar hafta sonu denk gelme ihtimali ${pct(baseline.pWeekend)}.`);
-    else if (baseline.pWeekend < 0.2) push('warn', 'Hafta sonu yükün ortalamanın üstünde', `Hafta sonu saatin beklenenin ${ratio.toFixed(1)} katı (şans eseri olma ihtimali ${pct(baseline.pWeekend)}). Takipte kal.`);
+    const ratio = baseline.expHard ? hardShifts / baseline.expHard : 0;
+    if (baseline.pHard < 0.05) push('danger', 'Cuma–Pazar yükün belirgin şekilde fazla', `${hardShifts} nöbetin Cuma–Pazar'a geldi, beklenen ≈ ${baseline.expHard.toFixed(1)} (${ratio.toFixed(1)} kat). Rastgele olsa bu kadar denk gelme ihtimali ${pct(baseline.pHard)}.`);
+    else if (baseline.pHard < 0.2) push('warn', 'Cuma–Pazar yükün ortalamanın üstünde', `${hardShifts} nöbet Cuma–Pazar, beklenen ≈ ${baseline.expHard.toFixed(1)} (şans eseri olma ihtimali ${pct(baseline.pHard)}).`);
     const holRatio = baseline.expHolidayH ? profiles.reduce((s, p) => s + p.holidayH, 0) / baseline.expHolidayH : 0;
     if (baseline.pHoliday < 0.05) push('danger', 'Tatillere çok sık denk geliyorsun', `Tatil nöbet saatin beklenenin ${holRatio.toFixed(1)} katı. Rastgele olsa bu kadar denk gelme ihtimali ${pct(baseline.pHoliday)}.`);
     else if (baseline.pHoliday < 0.2) push('warn', 'Tatil nöbetlerin ortalamanın üstünde', `Tatil saatin beklenenin ${holRatio.toFixed(1)} katı (şans eseri olma ihtimali ${pct(baseline.pHoliday)}).`);
-    if (baseline.pDow < 0.05) {
-      const maxI = dowCounts.indexOf(Math.max(...dowCounts));
-      push('warn', 'Nöbetler bazı günlerde yığılıyor', `${DOW_LONG[maxI]} günü ${dowCounts[maxI]} kez (beklenen ≈ ${baseline.expDow[maxI].toFixed(1)}). Gün dağılımı rastgele olmaktan uzak.`);
-    }
     for (const c of ['Ramazan Bayramı', 'Kurban Bayramı']) {
       if (catCounts[c] >= 2 && catCounts[c] > baseline.expCat[c] * 3) push('warn', `${c} nöbetleri fazla`, `${c}'na ${catCounts[c]} kez denk geldin, beklenen ≈ ${baseline.expCat[c].toFixed(1)}.`);
     }
   }
-
-  // Aynı gün serisi
-  let streak = 1, bestStreak = 1, bestDow = profiles[0]?.dow;
-  for (let i = 1; i < n; i++) {
-    streak = profiles[i].dow === profiles[i - 1].dow ? streak + 1 : 1;
-    if (streak > bestStreak) { bestStreak = streak; bestDow = profiles[i].dow; }
+  if (year && holidayShifts >= 2) push('warn', `${year}'de ${holidayShifts} tatil nöbeti`, `Bu yıl tatile denk gelen nöbetler: ${profiles.filter((p) => p.isHoliday).map((p) => fmtShort(p.date)).join(', ')}.`);
+  for (const c of ['Ramazan Bayramı', 'Kurban Bayramı']) {
+    const ys = [...new Set(profiles.filter((p) => p.cats.includes(c)).map((p) => Number(p.date.slice(0, 4))))].sort();
+    for (let i = 1; i < ys.length; i++) if (ys[i] === ys[i - 1] + 1) push('danger', `${c} üst üste iki yıl`, `${ys[i - 1]} ve ${ys[i]} yıllarında ${c}'na nöbet yazılmış.`);
   }
-  let tail = 1;
-  for (let i = n - 1; i > 0 && profiles[i].dow === profiles[i - 1].dow; i--) tail++;
-  if (tail >= 3) push(profiles[n - 1].dow >= 5 ? 'danger' : 'warn', `Son ${tail} nöbetin hepsi ${DOW_LONG[profiles[n - 1].dow]}`, 'Nöbetler hep aynı güne düşüyor. Sıra değişmezse bir sonraki de aynı güne gelecek.');
-  else if (bestStreak >= 3) push('info', `Geçmişte ${bestStreak} kez üst üste ${DOW_LONG[bestDow]}`, 'Arka arkaya aynı güne düşen nöbet serisi var.');
 
-  const last3 = gaps.slice(-3);
-  if (last3.length >= 2 && last3.every((g) => g.days % 7 === 0)) push('info', 'Aralıklar 7\'nin katı', `Son aralıklar ${last3.map((g) => g.days).join(', ')} gün. 7'nin katı aralıklar nöbetin hep aynı haftanın gününe düşmesine yol açar.`);
-
-  // Üst üste hafta sonu / tatil
-  let wkRun = 0, wkBest = 0, holRun = 0, holBest = 0;
+  // Üst üste Cuma–Pazar / tatil
+  let hRun = 0, hBest = 0, holRun = 0, holBest = 0;
   for (const p of profiles) {
-    wkRun = p.isWeekend ? wkRun + 1 : 0; wkBest = Math.max(wkBest, wkRun);
+    hRun = p.isHard ? hRun + 1 : 0; hBest = Math.max(hBest, hRun);
     holRun = p.isHoliday ? holRun + 1 : 0; holBest = Math.max(holBest, holRun);
   }
-  if (wkRun >= 2) push('danger', `Üst üste ${wkRun} hafta sonu nöbeti`, 'Son nöbetlerin arka arkaya hafta sonuna geldi.');
-  else if (wkBest >= 2) push(wkBest >= 3 ? 'warn' : 'info', `Geçmişte ${wkBest} kez üst üste hafta sonu`, 'Arka arkaya hafta sonu nöbeti tuttuğun bir dönem var.');
+  if (hRun >= 2) push('danger', `Üst üste ${hRun} Cuma–Pazar nöbeti`, 'Son nöbetlerin arka arkaya en zor günlere geldi.');
+  else if (hBest >= 3) push('warn', `${hBest} kez üst üste Cuma–Pazar`, 'Arka arkaya zor güne gelen nöbet serisi var.');
   if (holBest >= 2) push('danger', `Üst üste ${holBest} tatil nöbeti`, 'Arka arkaya tatil/bayram günlerine denk gelen nöbetlerin var.');
 
   // Aralıklar
@@ -281,30 +335,30 @@ function buildAlerts({ profiles, gaps, settings, baseline, dowCounts, catCounts,
     push(shorts.length >= 2 ? 'danger' : 'warn', `${shorts.length} kez kısa aralık`, `En son ${fmtShort(g.from)} → ${fmtShort(g.to)} arası sadece ${g.days} gün (eşik ${settings.shortGap} gün).`);
   }
   const longs = gaps.filter((g) => g.kind === 'long');
-  if (longs.length) push('info', `${longs.length} uzun aralık`, `En uzun ara ${Math.max(...gaps.map((g) => g.days))} gün.`);
+  if (longs.length) push('info', `${longs.length} uzun aralık`, `En uzun ara ${Math.max(...gaps.map((g) => g.days))} gün (eşik ${settings.longGap} gün).`);
 
   // Gelecek
   if (nextPlanned) {
     if (nextPlanned.isHoliday) push('warn', 'Sıradaki nöbet tatile denk geliyor', `${fmtDate(nextPlanned.date)}: ${nextPlanned.cats.join(', ')}.`);
-    if (nextPlanned.isWeekend && profiles.filter((p) => p.date < nextPlanned.date).slice(-1)[0]?.isWeekend) push('warn', 'Sıradaki nöbet yine hafta sonu', 'Bir önceki nöbetin de hafta sonuydu.');
   } else if (prediction) {
     const big = prediction.holidays.filter((h) => h.type === 'dini' || h.type === 'arife');
     if (big.length) push('warn', 'Tahmini sonraki nöbet aralığında bayram var', `${fmtShort(prediction.lo)} – ${fmtShort(prediction.hi)} aralığında ${[...new Set(big.map((h) => h.group || h.name))].join(', ')}.`);
     else if (prediction.holidays.length) push('info', 'Tahmini aralıkta resmi tatil var', [...new Set(prediction.holidays.map((h) => h.name))].join(', '));
   }
 
-  if (baseline && !A.some((a) => a.level === 'danger' || a.level === 'warn')) push('ok', 'Dağılım dengeli görünüyor', 'Hafta sonu, tatil ve gün dağılımında belirgin bir haksızlık işareti yok.');
+  if (baseline && !A.some((a) => a.level === 'danger' || a.level === 'warn')) push('ok', 'Dağılım dengeli görünüyor', 'Gün kuralı, Cuma–Pazar ve tatil dağılımında haksızlık işareti yok.');
   const order = { danger: 0, warn: 1, info: 2, ok: 3 };
   return A.sort((a, b) => order[a.level] - order[b.level]);
 }
 
-// Örnek veri: 2024'ten bugüne ~40 günlük, biraz düzensiz nöbetler
+// Örnek veri: 2024'ten bugüne ~1,5–2 aylık nöbetler, biri değişimli
 export function demoShifts() {
   const out = [];
-  let d = dn('2024-01-06');
-  const end = dn(todayIso()) + 20;
-  const steps = [42, 35, 42, 38, 42, 26, 44, 42, 35, 41, 49, 42, 33, 42, 40, 36, 42, 45, 42, 30, 42, 39];
+  let d = dn('2024-01-09');
+  const end = dn(todayIso()) + 25;
+  const steps = [52, 47, 55, 50, 58, 45, 52, 61, 49, 53, 44, 56, 51, 48, 57, 52, 46, 54, 50];
   let i = 0;
   while (d <= end) { out.push({ date: fromDn(d), note: '' }); d += steps[i++ % steps.length]; }
+  if (out.length > 4) { const k = out.length - 3; out[k] = { date: fromDn(dn(out[k].date) + 9), assigned: out[k].date, note: 'Değişim yapıldı' }; }
   return out;
 }
