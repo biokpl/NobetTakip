@@ -194,7 +194,7 @@ export function ruleCard(a, forceTable = false) {
   if (a.year && !forceTable) {
     const r = a.rule;
     el.innerHTML = `<div class="card-head"><h2>Gün kuralı · ${r.year}</h2><span class="badge ${r.doubles.length ? 'bad' : 'good'}">${r.doubles.length ? `${r.doubles.length} ihlal` : 'Kurala uygun'}</span></div>
-      <p class="hint">Her gün yılda 1 kez gelmeli. Kurumun yazdığı günlere bakılır; değişim yaptıysan asıl yazılan gün sayılır. Mor noktalı günler (Cuma–Pazar) en zor günler.</p>
+      <p class="hint">Her gün yılda 1 kez gelmeli. Değişim yaptıysan tuttuğun gün sayılır. Mor noktalı günler (Cuma–Pazar) en zor günler.</p>
       <div class="rule-grid">${r.counts.map((c, i) => {
         const cls = c >= 2 ? 'bad' : c === 1 ? 'ok' : r.complete ? 'miss' : 'wait';
         const st = c >= 2 ? `${c}. kez!` : c === 1 ? fmtShort(r.dates[i][0]) : r.complete ? 'gelmedi' : 'bekliyor';
@@ -205,7 +205,7 @@ export function ruleCard(a, forceTable = false) {
         : r.missing.length ? `Kalan: <b>${r.missing.map((i) => DOW_LONG[i]).join(', ')}</b>. Kural işliyorsa bu yılki sonraki nöbetin bunlardan birine gelmeli.` : 'Bu yıl 7 günün hepsi doldu; yeni nöbet gelirse tekrar sayılır.'}</p>`;
   } else {
     const rows = a.ruleYears.filter((r) => r.total);
-    el.innerHTML = `<h2>Gün kuralı · yıllara göre</h2><p class="hint">Her hücre o yıl o güne kaç nöbet geldiğini gösterir. Kurala göre hepsi 1 olmalı; kırmızı = aynı gün ikinci kez. Değişimlerde kurumun yazdığı gün sayılır.</p>
+    el.innerHTML = `<h2>Gün kuralı · yıllara göre</h2><p class="hint">Her hücre o yıl o güne kaç nöbet geldiğini gösterir. Kurala göre hepsi 1 olmalı; kırmızı = aynı gün ikinci kez. Değişimlerde tuttuğun gün sayılır.</p>
       <table class="rule-table"><thead><tr><th></th>${DOW_SHORT.map((d, i) => `<th class="${HARD.has(i) ? 'hard' : ''}">${d}</th>`).join('')}</tr></thead><tbody>
       ${rows.map((r) => `<tr><td class="y">${r.year}</td>${r.counts.map((c, i) => `<td class="c${Math.min(c, 2)}" title="${r.dates[i].map(fmtShort).join(', ')}">${c || '·'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   }

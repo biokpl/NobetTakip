@@ -1,5 +1,5 @@
 // Çevrimdışı önbellek. Sürüm değişince eski önbellek silinir.
-const CACHE = 'nobet-v4';
+const CACHE = 'nobet-v5';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/app.css', './vendor/echarts.min.js',
   './js/app.js', './js/store.js', './js/holidays.js', './js/analysis.js', './js/ui.js', './js/charts.js',

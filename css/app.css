@@ -52,6 +52,9 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
 body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -68,6 +71,7 @@ body::before {
     radial-gradient(600px 500px at 50% 120%, var(--glow1), transparent 70%);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 
 .app { max-width: 560px; margin: 0 auto; padding: 0 16px calc(var(--nav-h) + 28px + env(safe-area-inset-bottom)); }
 

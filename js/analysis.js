@@ -128,10 +128,10 @@ export function analyze(state, opts = {}, now = new Date()) {
   const { settings } = state;
   const year = yearOf(opts, now);
   const today = todayIso();
-  // Yük hesapları fiilen tutulan güne, gün kuralı kurumun yazdığı güne göre
+  // Her hesap fiilen tutulan güne göre (değişimde tuttuğun gün sayılır)
   const entries = shiftEntries(state, 'worked');
-  const assignedDays = shiftEntries(state, 'assigned').map((e) => ({ date: e.date, dow: dowOf(e.date) }));
-  const yrs = entries.map((e) => Number(e.date.slice(0, 4))).concat(state.shifts.map((s) => Number((s.assigned || s.date).slice(0, 4))));
+  const assignedDays = entries.map((e) => ({ date: e.date, dow: dowOf(e.date) }));
+  const yrs = entries.map((e) => Number(e.date.slice(0, 4))).concat(state.shifts.map((s) => Number(s.date.slice(0, 4))));
   const y0 = Math.min(...yrs, now.getFullYear()) - 1;
   const y1 = Math.max(...yrs, now.getFullYear()) + 2;
   const hmap = buildHolidayMap(y0, y1, state.customHolidays, state.hiddenHolidays);
@@ -294,7 +294,7 @@ function buildAlerts({ profiles, gaps, settings, baseline, catCounts, prediction
     for (const i of r.doubles) {
       const hard = HARD.has(i);
       push(hard ? 'danger' : 'warn', `Kural ihlali: ${r.year}'de ${DOW_LONG[i]} ${r.counts[i]}. kez`,
-        `Kurala göre her gün yılda 1 kez gelmeli. Kurumun ${DOW_LONG[i]} gününe yazdığı nöbetler: ${r.dates[i].map(fmtShort).join(', ')}.${hard ? ' Cuma–Pazar en zor günlerden.' : ''}`);
+        `Kurala göre her gün yılda 1 kez gelmeli. ${DOW_LONG[i]} günü tuttuğun nöbetler: ${r.dates[i].map(fmtShort).join(', ')}.${hard ? ' Cuma–Pazar en zor günlerden.' : ''}`);
     }
     if (r.complete && r.missing.length && r.total) push('info', `${r.year}'de hiç gelmeyen gün: ${dowList(r.missing)}`, 'Yıl tamamlanmış; bu günlere hiç nöbet yazılmamış.');
   }
