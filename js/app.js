@@ -35,13 +35,13 @@ function applyTheme() {
 
 function subtitle(a) {
   if (!a.allProfiles.length) return 'Nöbet Takip';
-  return `${a.year ? a.year : 'Tüm yıllar'} · ${a.n} nöbet · ${a.basis === 'assigned' ? 'kurumun yazdığı' : 'tuttuğum günler'}`;
+  return `${a.year ? a.year : 'Tüm yıllar'} · ${a.n} nöbet${a.swaps ? ` · ${a.swaps} değişim` : ''}`;
 }
 
 function refresh({ keepScroll = true } = {}) {
   const y = window.scrollY;
   const st = store.get();
-  analysis = analyze(st, { year: st.settings.viewYear, basis: st.settings.basis });
+  analysis = analyze(st, { year: st.settings.viewYear });
   disposeAll();
   const v = VIEWS[current];
   document.getElementById('title').textContent = v.title;

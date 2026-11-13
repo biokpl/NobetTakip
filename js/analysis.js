@@ -126,15 +126,16 @@ export function ruleOfYear(year, profiles, now = new Date()) {
 
 export function analyze(state, opts = {}, now = new Date()) {
   const { settings } = state;
-  const basis = opts.basis || 'assigned';
   const year = yearOf(opts, now);
   const today = todayIso();
-  const entries = shiftEntries(state, basis);
-  const yrs = entries.map((e) => Number(e.date.slice(0, 4))).concat(state.shifts.map((s) => Number(s.date.slice(0, 4))));
+  // Yük hesapları fiilen tutulan güne, gün kuralı kurumun yazdığı güne göre
+  const entries = shiftEntries(state, 'worked');
+  const assignedDays = shiftEntries(state, 'assigned').map((e) => ({ date: e.date, dow: dowOf(e.date) }));
+  const yrs = entries.map((e) => Number(e.date.slice(0, 4))).concat(state.shifts.map((s) => Number((s.assigned || s.date).slice(0, 4))));
   const y0 = Math.min(...yrs, now.getFullYear()) - 1;
   const y1 = Math.max(...yrs, now.getFullYear()) + 2;
   const hmap = buildHolidayMap(y0, y1, state.customHolidays, state.hiddenHolidays);
-  const allProfiles = entries.map((e) => withMeta(shiftProfile(e.date, settings, hmap), e, basis));
+  const allProfiles = entries.map((e) => withMeta(shiftProfile(e.date, settings, hmap), e, 'worked'));
   const profiles = year ? allProfiles.filter((p) => p.date.startsWith(year)) : allProfiles;
   const shifts = profiles.map((p) => p.date);
   const n = profiles.length;
@@ -164,8 +165,8 @@ export function analyze(state, opts = {}, now = new Date()) {
   const catCounts = Object.fromEntries(CATEGORIES.map((c) => [c, profiles.filter((p) => p.cats.includes(c)).length]));
 
   // Gün kuralı
-  const availableYears = [...new Set(allProfiles.map((p) => p.date.slice(0, 4)).concat(String(now.getFullYear())))].sort();
-  const ruleYears = availableYears.map((y) => ruleOfYear(y, allProfiles, now));
+  const availableYears = [...new Set(allProfiles.concat(assignedDays).map((p) => p.date.slice(0, 4)).concat(String(now.getFullYear())))].sort();
+  const ruleYears = availableYears.map((y) => ruleOfYear(y, assignedDays, now));
   const rule = ruleYears.find((r) => r.year === (year || String(now.getFullYear())));
 
   // Rastgele dağıtım ile kıyas (Monte Carlo)
@@ -252,7 +253,7 @@ export function analyze(state, opts = {}, now = new Date()) {
     for (let d = lo; d <= hi; d++) {
       const s = fromDn(d);
       const y = s.slice(0, 4);
-      remaining[y] = remaining[y] || ruleOfYear(y, allProfiles, now).missing;
+      remaining[y] = remaining[y] || ruleOfYear(y, assignedDays, now).missing;
       if (HARD.has(dowOf(s))) hardDays++;
       for (const h of hmap.get(s) || []) if (h.type !== 'kandil') inWindow.push({ date: s, ...h });
       if (remaining[y].includes(dowOf(s))) candidates.push(s);
@@ -272,7 +273,7 @@ export function analyze(state, opts = {}, now = new Date()) {
   });
 
   return {
-    n, year, basis, shifts, profiles, allProfiles, gaps, gapMean, gapStd, dowCounts, totalH, weekendH, holidayH,
+    n, year, shifts, profiles, allProfiles, gaps, gapMean, gapStd, dowCounts, totalH, weekendH, holidayH,
     weekendShifts, hardShifts, holidayShifts, swaps, catCounts, baseline, scores, current, nextPlanned, last, rule, ruleYears,
     settings, prediction, alerts, years, hmap, today, availableYears,
   };
@@ -293,7 +294,7 @@ function buildAlerts({ profiles, gaps, settings, baseline, catCounts, prediction
     for (const i of r.doubles) {
       const hard = HARD.has(i);
       push(hard ? 'danger' : 'warn', `Kural ihlali: ${r.year}'de ${DOW_LONG[i]} ${r.counts[i]}. kez`,
-        `Kurala göre her gün yılda 1 kez gelmeli. ${DOW_LONG[i]} günleri: ${r.dates[i].map(fmtShort).join(', ')}.${hard ? ' Cuma–Pazar en zor günlerden.' : ''}`);
+        `Kurala göre her gün yılda 1 kez gelmeli. Kurumun ${DOW_LONG[i]} gününe yazdığı nöbetler: ${r.dates[i].map(fmtShort).join(', ')}.${hard ? ' Cuma–Pazar en zor günlerden.' : ''}`);
     }
     if (r.complete && r.missing.length && r.total) push('info', `${r.year}'de hiç gelmeyen gün: ${dowList(r.missing)}`, 'Yıl tamamlanmış; bu günlere hiç nöbet yazılmamış.');
   }

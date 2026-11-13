@@ -139,7 +139,7 @@ function timeline(p, settings) {
 
 export function openDay(date) {
   const st = store.get();
-  const a = analyze(st, { year: 'all', basis: 'worked' });
+  const a = analyze(st, { year: 'all' });
   const ents = a.hmap.get(date) || [];
   const isShift = store.hasShift(date);
   const p = isShift ? a.allProfiles.find((x) => x.date === date) : shiftProfile(date, st.settings, a.hmap);

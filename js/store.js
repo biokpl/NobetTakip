@@ -9,7 +9,6 @@ const DEFAULTS = {
     shortGap: 35,
     longGap: 70,
     viewYear: 'current', // 'current' | 'all' | 'YYYY'
-    basis: 'assigned', // 'assigned' = kurumun yazdığı, 'worked' = tuttuğum
     periodStart: '',
     theme: 'dark',
   },
