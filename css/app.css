@@ -22,6 +22,10 @@
   --glow2: rgba(45, 212, 240, 0.12);
   --radius: 22px;
   --nav-h: 68px;
+  --glass: rgba(16, 20, 40, 0.42);
+  --glass-edge: rgba(255, 255, 255, 0.10);
+  --glass-hi: rgba(255, 255, 255, 0.07);
+  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
 :root[data-theme="light"] {
@@ -46,6 +50,10 @@
   --shadow: 0 8px 30px rgba(30, 40, 80, 0.10);
   --glow1: rgba(91, 76, 240, 0.12);
   --glow2: rgba(10, 167, 200, 0.10);
+  --glass: rgba(255, 255, 255, 0.52);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-hi: rgba(255, 255, 255, 0.55);
+  --glass-shadow: 0 8px 28px rgba(30, 40, 80, 0.14);
   color-scheme: light;
 }
 
@@ -81,10 +89,11 @@ input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-
   display: flex; align-items: center; gap: 12px;
   margin: 0 -16px 14px;
   padding: calc(12px + env(safe-area-inset-top)) 18px 12px;
-  background: color-mix(in srgb, var(--bg) 84%, transparent);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border-bottom: 1px solid var(--line);
+  background: var(--glass);
+  backdrop-filter: blur(26px) saturate(180%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  border-bottom: 0.5px solid var(--glass-edge);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.06);
 }
 .logo {
   width: 40px; height: 40px; border-radius: 10px; flex: none; display: block;
@@ -301,9 +310,10 @@ textarea.input { width: 100%; resize: vertical; min-height: 64px; font-weight: 5
   position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 30;
   width: min(528px, calc(100% - 24px)); height: var(--nav-h);
   display: grid; grid-template-columns: repeat(4, 1fr);
-  background: color-mix(in srgb, var(--card-solid) 82%, transparent);
-  border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow);
-  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  background: var(--glass);
+  border: 0.5px solid var(--glass-edge); border-radius: 26px;
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-hi);
+  backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%);
   padding: 6px;
 }
 .nav button {
