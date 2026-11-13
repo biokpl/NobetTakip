@@ -79,14 +79,19 @@ input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-
 .topbar {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; gap: 12px;
-  padding: calc(14px + env(safe-area-inset-top)) 2px 12px;
-  background: linear-gradient(var(--bg) 60%, transparent);
-  backdrop-filter: blur(6px);
+  margin: 0 -16px 14px;
+  padding: calc(12px + env(safe-area-inset-top)) 18px 12px;
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-bottom: 1px solid var(--line);
 }
 .logo {
-  width: 40px; height: 40px; border-radius: 12px; flex: none; display: block;
-  box-shadow: 0 6px 20px var(--glow1), 0 0 0 1px var(--line);
+  width: 40px; height: 40px; border-radius: 10px; flex: none; display: block;
+  object-fit: cover; background: #141a3d;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 4px 12px rgba(0, 0, 0, 0.35);
 }
+:root[data-theme="light"] .logo { box-shadow: 0 0 0 1px rgba(20, 30, 60, 0.10), 0 4px 12px rgba(20, 30, 60, 0.18); }
 .topbar h1 { font-size: 18px; margin: 0; font-weight: 800; letter-spacing: -0.02em; }
 .topbar .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
 .topbar .spacer { flex: 1; }

@@ -107,7 +107,7 @@ export function shiftEntries(state, basis = 'assigned') {
 
 function withMeta(p, e, basis) {
   const tags = p.tags.slice();
-  if (e.swapped) tags.unshift({ t: basis === 'assigned' ? `Değişim → ${fmtShort(e.worked)} tutuldu` : `Değişim (asıl ${fmtShort(e.assigned)})`, c: 'swap' });
+  if (e.swapped) tags.unshift({ t: basis === 'assigned' ? `Değişim → ${fmtShort(e.worked)} tutuldu` : `Değişim (Asıl ${Number(e.assigned.slice(8))} ${MONTHS[Number(e.assigned.slice(5, 7)) - 1]} - ${DOW_LONG[dowOf(e.assigned)]})`, c: 'swap' });
   return { ...p, tags, worked: e.worked, assigned: e.assigned, swapped: e.swapped, note: e.note, isHard: HARD.has(p.dow) };
 }
 

@@ -63,6 +63,6 @@ def coat_scene(z):
 if __name__ == '__main__':
     rounded = icon_coat(False)
     for size in (192, 512):
-        rounded.resize((size, size), Image.LANCZOS).save(os.path.join(OUT, f'icon-{size}.png'))
-    coat_scene(0.80).convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, 'icon-maskable-512.png'))
+        rounded.resize((size, size), Image.LANCZOS).save(os.path.join(OUT, f'app-icon-{size}.png'))
+    coat_scene(0.80).convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, 'app-icon-maskable-512.png'))
     print('ok')
