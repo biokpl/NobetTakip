@@ -1,10 +1,10 @@
 // Çevrimdışı önbellek. Sürüm değişince eski önbellek silinir.
-const CACHE = 'nobet-v5';
+const CACHE = 'nobet-v6';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/app.css', './vendor/echarts.min.js',
   './js/app.js', './js/store.js', './js/holidays.js', './js/analysis.js', './js/ui.js', './js/charts.js',
   './js/views/panel.js', './js/views/calendar.js', './js/views/analysis.js', './js/views/settings.js',
-  './icons/icon-192.png', './icons/icon-512.png',
+  './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (e) => {

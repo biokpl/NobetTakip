@@ -84,11 +84,9 @@ input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-
   backdrop-filter: blur(6px);
 }
 .logo {
-  width: 38px; height: 38px; border-radius: 12px; flex: none;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  display: grid; place-items: center; box-shadow: 0 6px 20px var(--glow1);
+  width: 40px; height: 40px; border-radius: 12px; flex: none; display: block;
+  box-shadow: 0 6px 20px var(--glow1), 0 0 0 1px var(--line);
 }
-.logo svg { width: 22px; height: 22px; }
 .topbar h1 { font-size: 18px; margin: 0; font-weight: 800; letter-spacing: -0.02em; }
 .topbar .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
 .topbar .spacer { flex: 1; }
@@ -375,11 +373,11 @@ textarea.input { width: 100%; resize: vertical; min-height: 64px; font-weight: 5
 .chip.on { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-color: transparent; }
 
 /* Gün kuralı */
-.rule-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.rule-day { border-radius: 14px; padding: 9px 2px 8px; text-align: center; background: var(--card-hi); border: 1px solid var(--line); position: relative; }
+.rule-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.rule-day { min-width: 0; border-radius: 13px; padding: 9px 1px 8px; text-align: center; background: var(--card-hi); border: 1px solid var(--line); position: relative; }
 .rule-day .rd-name { font-size: 11px; font-weight: 800; color: var(--muted); }
 .rule-day .rd-val { font-size: 20px; font-weight: 800; margin: 2px 0 1px; }
-.rule-day .rd-st { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+.rule-day .rd-st { white-space: nowrap; overflow: hidden; text-overflow: clip; font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
 .rule-day.ok { background: color-mix(in srgb, var(--good) 13%, transparent); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
 .rule-day.ok .rd-val, .rule-day.ok .rd-st { color: var(--good); }
 .rule-day.bad { background: color-mix(in srgb, var(--bad) 15%, transparent); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }

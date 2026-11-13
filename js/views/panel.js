@@ -197,7 +197,7 @@ export function ruleCard(a, forceTable = false) {
       <p class="hint">Her gün yılda 1 kez gelmeli. Değişim yaptıysan tuttuğun gün sayılır. Mor noktalı günler (Cuma–Pazar) en zor günler.</p>
       <div class="rule-grid">${r.counts.map((c, i) => {
         const cls = c >= 2 ? 'bad' : c === 1 ? 'ok' : r.complete ? 'miss' : 'wait';
-        const st = c >= 2 ? `${c}. kez!` : c === 1 ? fmtShort(r.dates[i][0]) : r.complete ? 'gelmedi' : 'bekliyor';
+        const st = c >= 2 ? `${c}. kez!` : c === 1 ? fmtShort(r.dates[i][0]) : r.complete ? 'yok' : 'boş';
         return `<div class="rule-day ${cls} ${HARD.has(i) ? 'hard' : ''}" title="${DOW_LONG[i]}"><div class="rd-name">${DOW_SHORT[i]}</div><div class="rd-val">${c}</div><div class="rd-st">${st}</div></div>`;
       }).join('')}</div>
       <p class="chart-note" style="margin-top:10px">${r.complete
