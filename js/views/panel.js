@@ -102,7 +102,7 @@ function kpi(label, val, unit, sub, color, spark = false) {
 function mountGauge(el, value, lvl, c) {
   const col = levelColor(c, lvl);
   mount(el, {
-    animationDuration: 1600,
+    animationDuration: 900,
     series: [{
       type: 'gauge', startAngle: 215, endAngle: -35, min: 0, max: 100, radius: '88%', center: ['50%', '58%'],
       progress: { show: value != null, roundCap: true, width: 18,
