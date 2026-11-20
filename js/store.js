@@ -13,7 +13,8 @@ const DEFAULTS = {
     remindEnabled: true,
     remindItems: 'Şarj aleti',
     syncTopic: '',   // nöbet tarihlerini Pi'ye ileten gizli ntfy kanalı
-    notifyTopic: '', // hatırlatmanın geldiği ntfy kanalı
+    pushSub: null,   // bu telefonun bildirim aboneliği (web push)
+    pushTestAt: 0,
     theme: 'dark',
   },
   customHolidays: [], // { date, name, type }

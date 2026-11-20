@@ -2,8 +2,9 @@
 
 - Uygulama nöbet tarihlerini gizli bir ntfy kanalına (sync_topic) JSON olarak yollar.
 - Bu betik o kanalı okur, tarihleri yerel dosyada saklar.
-- Nöbetten önceki gün saat 18:30'da bildirim kanalına (notify_topic) hatırlatma yollar.
+- Nöbetten önceki gün saat 18:30'da telefona uygulamanın kendi bildirimini (web push) yollar.
 - Nöbet günü hafta içiyse 17:00'de, hafta sonuysa 08:30'da hatırlatmayı telefondan siler.
+- Telefon aboneliği yoksa (eski kurulum) ntfy kanalına (notify_topic) yollar.
 - Nöbet silinir ya da tarihi değişirse gönderilmiş hatırlatmayı da siler.
 """
 import json
@@ -17,6 +18,8 @@ BASE = Path(__file__).resolve().parent
 CFG = json.loads((BASE / 'config.json').read_text(encoding='utf-8'))
 DATA = BASE / 'data.json'   # uygulamadan gelen son veri
 SENT = BASE / 'sent.json'   # gönderilen / silinen hatırlatmalar
+TEST = BASE / 'test.json'   # son yapılan deneme bildirimi
+VAPID_KEY = str(BASE / 'vapid_private.pem')
 NTFY = CFG.get('ntfy_url', 'https://ntfy.sh').rstrip('/')
 
 AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
@@ -81,21 +84,53 @@ def clear_at(d):
     return datetime.combine(d, time(8, 30) if d.weekday() >= 5 else time(17, 0))
 
 
-def publish(d, items, start):
+class AbonelikBitti(Exception):
+    pass
+
+
+def push(sub, obj):
+    """Uygulamanın kendi bildirimi (web push)."""
+    from pywebpush import webpush, WebPushException
+    try:
+        webpush(subscription_info=sub, data=json.dumps(obj, ensure_ascii=False), vapid_private_key=VAPID_KEY,
+                vapid_claims={'sub': CFG.get('vapid_sub', 'https://biokpl.github.io')},
+                ttl=12 * 3600, headers={'Urgency': 'high'}, timeout=20)
+    except WebPushException as e:
+        code = getattr(e.response, 'status_code', None)
+        if code in (404, 410):
+            raise AbonelikBitti() from e
+        raise
+
+
+def reminder_text(d, items, start):
     gun = f"{d.day} {AYLAR[d.month - 1]} {GUNLER[d.weekday()]}"
     liste = [x.strip() for x in str(items or 'Şarj aleti').replace('\n', ',').split(',') if x.strip()]
-    msg = f"Yarın ({gun}) saat {start.strftime('%H:%M')}'da 24 saatlik nöbetin başlıyor.\n\nYanına al:\n" + '\n'.join(f"• {x}" for x in liste)
-    body = {
-        'topic': CFG['notify_topic'], 'title': 'Yarın nöbetin var', 'message': msg,
-        'priority': 4, 'tags': ['bell'], 'sequence_id': f"nobet-{d.isoformat()}",
-    }
-    if CFG.get('app_url'):
-        body['click'] = CFG['app_url']
-    requests.post(f"{NTFY}/", json=body, timeout=20).raise_for_status()
+    return f"Yarın ({gun}) saat {start.strftime('%H:%M')}'da 24 saatlik nöbetin başlıyor.\nYanına al: " + ', '.join(liste)
 
 
-def delete(dstr):
-    requests.delete(f"{NTFY}/{CFG['notify_topic']}/nobet-{dstr}", timeout=20).raise_for_status()
+def publish(d, data, start):
+    """Hatırlatmayı yolla; hangi yoldan gittiğini döndür."""
+    title = 'Yarın nöbetin var'
+    body = reminder_text(d, data.get('items'), start)
+    tag = f"nobet-{d.isoformat()}"
+    if data.get('push'):
+        push(data['push'], {'type': 'remind', 'tag': tag, 'title': title, 'body': body, 'url': CFG.get('app_url', './')})
+        return 'push'
+    if CFG.get('notify_topic'):
+        msg = {'topic': CFG['notify_topic'], 'title': title, 'message': body, 'priority': 4, 'tags': ['bell'], 'sequence_id': tag}
+        if CFG.get('app_url'):
+            msg['click'] = CFG['app_url']
+        requests.post(f"{NTFY}/", json=msg, timeout=20).raise_for_status()
+        return 'ntfy'
+    raise RuntimeError('bildirim yolu yok (telefon aboneliği bekleniyor)')
+
+
+def delete(dstr, via, data):
+    tag = f"nobet-{dstr}"
+    if via == 'ntfy':
+        requests.delete(f"{NTFY}/{CFG['notify_topic']}/{tag}", timeout=20).raise_for_status()
+    elif data.get('push'):
+        push(data['push'], {'type': 'clear', 'tag': tag})
 
 
 def main():
@@ -115,6 +150,17 @@ def main():
     sent = load(SENT, {})
     dirty = False
 
+    # Deneme bildirimi: uygulamada düğmeye basıldıysa bir kez yolla
+    test = load(TEST, {})
+    if data.get('test', 0) > test.get('done', 0) and data.get('push'):
+        try:
+            push(data['push'], {'type': 'test', 'tag': 'nobet-test', 'title': 'Nöbet Takip',
+                                'body': 'Deneme: nöbet hatırlatmaları bu şekilde gelecek.', 'url': CFG.get('app_url', './')})
+            print('deneme bildirimi gönderildi')
+        except Exception as e:
+            print('deneme gönderilemedi:', e, file=sys.stderr)
+        save(TEST, {'done': data['test']})
+
     # Gönder: önceki gün 18:30 ile silinme saati arasında, henüz gönderilmediyse
     if enabled:
         for dstr in sorted(shifts):
@@ -125,10 +171,12 @@ def main():
             at = datetime.combine(d - timedelta(days=1), remind)
             if at <= now < clear_at(d) and dstr not in sent:
                 try:
-                    publish(d, data.get('items'), start)
-                    sent[dstr] = {'sent': now.isoformat(timespec='seconds')}
+                    via = publish(d, data, start)
+                    sent[dstr] = {'sent': now.isoformat(timespec='seconds'), 'via': via}
                     dirty = True
-                    print('hatırlatma gönderildi:', dstr)
+                    print('hatırlatma gönderildi:', dstr, via)
+                except AbonelikBitti:
+                    print('telefon aboneliği geçersiz; uygulamada bildirim iznini yenile', file=sys.stderr)
                 except Exception as e:
                     print('gönderilemedi:', dstr, e, file=sys.stderr)
 
@@ -142,10 +190,13 @@ def main():
             continue
         if now >= clear_at(d) or dstr not in shifts or not enabled:
             try:
-                delete(dstr)
+                delete(dstr, rec.get('via', 'ntfy'), data)
                 rec['deleted'] = now.isoformat(timespec='seconds')
                 dirty = True
                 print('hatırlatma silindi:', dstr)
+            except AbonelikBitti:
+                rec['deleted'] = now.isoformat(timespec='seconds')
+                dirty = True
             except Exception as e:
                 print('silinemedi:', dstr, e, file=sys.stderr)
 

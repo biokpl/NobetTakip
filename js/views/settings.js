@@ -3,7 +3,7 @@ import { holidaysOfYear, TYPE_LABEL } from '../holidays.js';
 import { fmtDate, demoShifts, DOW_SHORT, dowOf } from '../analysis.js';
 import { icon, esc, toast, downloadFile } from '../ui.js';
 import { setMonth } from './calendar.js';
-import { reminderConfigured, lastSyncAt, syncNow, sendTest } from '../reminder.js';
+import { reminderConfigured, lastSyncAt, syncNow, pushReady, pushSupported, enablePush, requestTest } from '../reminder.js';
 
 let holYear = String(new Date().getFullYear());
 
@@ -47,34 +47,53 @@ export function renderSettings(root, a, app) {
   g.querySelectorAll('#theme button').forEach((b) => b.classList.toggle('on', b.dataset.t === s.theme));
   g.querySelector('#theme').onclick = (e) => { const t = e.target.closest('button')?.dataset.t; if (t) store.setSetting('theme', t); };
 
-  // Nöbet hatırlatması (Pi + ntfy)
+  // Nöbet hatırlatması (Pi + uygulamanın kendi bildirimi)
   const next = a.nextPlanned;
   const on = s.remindEnabled !== false;
   const ok = reminderConfigured();
+  const ready = pushReady();
+  const perm = pushSupported() ? Notification.permission : 'yok';
   const last = lastSyncAt();
+  let status;
+  if (!ok) {
+    status = `<div class="alert warn" style="margin-bottom:12px"><div class="a-ic">${icon('alert')}</div><div><b>Kurulum gerekli</b><p>Sana verilen kurulum bağlantısını telefonda aç ya da kodu aşağıya yapıştır.</p></div></div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:12px"><input class="input" id="remCode" placeholder="nobet-sync-…"><button class="btn primary sm" id="remSave">Kaydet</button></div>`;
+  } else if (!ready) {
+    status = perm === 'denied'
+      ? `<div class="alert danger" style="margin-bottom:12px"><div class="a-ic">${icon('alert')}</div><div><b>Bildirim izni kapalı</b><p>Chrome'da adres çubuğundaki kilit simgesi → İzinler → Bildirimler → İzin ver. Sonra bu sayfayı yenile.</p></div></div>`
+      : perm === 'yok'
+        ? `<div class="alert warn" style="margin-bottom:12px"><div class="a-ic">${icon('alert')}</div><div><b>Bu tarayıcı bildirim desteklemiyor</b><p>Uygulamayı telefonda Chrome ile ana ekrana ekleyip oradan aç.</p></div></div>`
+        : `<div class="alert warn" style="margin-bottom:12px"><div class="a-ic">${icon('bell')}</div><div><b>Bildirim izni gerekli</b><p>Hatırlatmaların telefonuna Nöbet Takip bildirimi olarak gelmesi için bir kez izin ver.</p></div></div>
+           <button class="btn primary" id="remPerm" style="margin-bottom:12px">${icon('bell')}Bildirimlere izin ver</button>`;
+  } else {
+    status = `<div class="alert ok" style="margin-bottom:12px"><div class="a-ic">${icon('check')}</div><div><b>Hazır</b><p>Bildirimler bu telefona Nöbet Takip adıyla gelecek. ${last ? `Son eşitleme: ${new Date(last).toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}` : ''}</p></div></div>`;
+  }
   const r = section(root, `<div class="row-between"><h2 style="margin:0">Nöbet hatırlatması</h2>
       <div class="seg" id="remOn"><button data-v="1" class="${on ? 'on' : ''}">Açık</button><button data-v="0" class="${on ? '' : 'on'}">Kapalı</button></div></div>
     <p class="hint" style="margin-top:8px">Nöbetten önceki gün <b style="color:var(--text)">18:30</b>'da telefona bildirim gelir. Nöbet günü (hafta içi 17:00, hafta sonu 08:30) bildirim kendiliğinden silinir. Nöbet ekleyip sildikçe otomatik güncellenir.</p>
-    ${ok ? `<div class="alert ok" style="margin-bottom:12px"><div class="a-ic">${icon('check')}</div><div><b>Bağlı</b><p>${last ? `Son eşitleme: ${new Date(last).toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}` : 'Henüz eşitlenmedi'} · ntfy kanalı: <b>${esc(s.notifyTopic)}</b></p></div></div>`
-      : `<div class="alert warn" style="margin-bottom:12px"><div class="a-ic">${icon('alert')}</div><div><b>Kurulum gerekli</b><p>Sana verilen kurulum bağlantısını telefonda aç ya da kodu aşağıya yapıştır.</p></div></div>
-         <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:12px"><input class="input" id="remCode" placeholder="kanal~kanal"><button class="btn primary sm" id="remSave">Kaydet</button></div>`}
+    ${status}
     <label style="font-size:13px;font-weight:700;display:block;margin:4px 0 6px">Yanına alacakların</label>
     <textarea class="input" id="remItems" placeholder="Şarj aleti, kulaklık…">${esc(s.remindItems || 'Şarj aleti')}</textarea>
     <p class="hint" style="margin:6px 0 12px">Virgülle ya da alt alta yaz; bildirimde liste olarak görünür.</p>
-    <div class="btn-row"><button class="btn ghost" id="remTest" ${ok ? '' : 'disabled style="opacity:.5"'}>${icon('bell')}Deneme bildirimi</button>
-      <button class="btn ghost" id="ics" ${next ? '' : 'disabled style="opacity:.5"'}>${icon('calendar')}Takvime ekle</button></div>`);
+    <div class="btn-row"><button class="btn ghost" id="remTest" ${ready ? '' : 'disabled style="opacity:.5"'}>${icon('bell')}Deneme bildirimi</button>
+      <button class="btn ghost" id="ics" ${next ? '' : 'disabled style="opacity:.5"'}>${icon('calendar')}Takvime ekle</button></div>
+    <p class="hint" style="margin:10px 0 0">Bildirim gecikirse: telefon Ayarlar → Pil → Chrome → <b style="color:var(--text)">Kısıtlanmamış</b>.</p>`);
   r.querySelector('#remOn').onclick = (e) => { const v = e.target.closest('button')?.dataset.v; if (v) { store.setSetting('remindEnabled', v === '1'); toast(v === '1' ? 'Hatırlatma açık' : 'Hatırlatma kapalı'); } };
   r.querySelector('#remItems').onchange = (e) => { store.setSetting('remindItems', e.target.value.trim() || 'Şarj aleti'); toast('Kaydedildi'); };
   const save = r.querySelector('#remSave');
   if (save) save.onclick = async () => {
-    const m = r.querySelector('#remCode').value.trim().match(/^([\w-]+)~([\w-]+)$/);
-    if (!m) return toast('Kod biçimi: kanal~kanal');
+    const m = r.querySelector('#remCode').value.trim().match(/^([\w-]+)(?:~[\w-]+)?$/);
+    if (!m) return toast('Kod geçersiz');
     store.setSetting('syncTopic', m[1]);
-    store.setSetting('notifyTopic', m[2]);
     const res = await syncNow(true);
-    toast(res.ok ? 'Hatırlatma kuruldu' : 'Kaydedildi, internet gelince eşitlenecek');
+    toast(res.ok ? 'Bağlandı · şimdi bildirim izni ver' : 'Kaydedildi, internet gelince eşitlenecek');
   };
-  r.querySelector('#remTest').onclick = async () => toast((await sendTest()) ? 'Deneme bildirimi gönderildi' : 'Gönderilemedi, interneti kontrol et');
+  const permBtn = r.querySelector('#remPerm');
+  if (permBtn) permBtn.onclick = async () => {
+    const res = await enablePush();
+    toast(res.ok ? 'Bildirimler açık' : res.reason === 'denied' ? 'İzin verilmedi' : 'Bildirim açılamadı');
+  };
+  r.querySelector('#remTest').onclick = () => { requestTest(); toast('2 dakika içinde deneme bildirimi gelecek'); };
   if (next) r.querySelector('#ics').onclick = () => downloadFile(`nobet-${next.date}.ics`, ics(next.date, s), 'text/calendar');
 
   // Yedek

@@ -1,5 +1,6 @@
 {
   "sync_topic": "nobet-sync-XXXXXXXXXXXXXXXX",
-  "notify_topic": "Nobet-bkpl-XXXXXX",
+  "notify_topic": "",
+  "vapid_sub": "https://biokpl.github.io",
   "app_url": "https://biokpl.github.io/NobetTakip/"
 }

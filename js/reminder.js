@@ -1,10 +1,12 @@
-// Nöbet hatırlatması: nöbet tarihlerini gizli bir ntfy kanalı üzerinden Pi'ye iletir.
-// Pi önceki gün 18:30'da bildirim yollar, nöbet günü gelince (hafta içi 17:00, hafta sonu 08:30) siler.
+// Nöbet hatırlatması: nöbet tarihleri ve bildirim aboneliği gizli bir kanal üzerinden Pi'ye iletilir.
+// Pi önceki gün 18:30'da uygulamanın kendi bildirimini (web push) yollar,
+// nöbet günü gelince (hafta içi 17:00, hafta sonu 08:30) aynı bildirimi telefondan siler.
 import { store } from './store.js';
 
-const NTFY = 'https://ntfy.sh/';
+const NTFY = 'https://ntfy.sh/'; // yalnızca Pi'ye veri taşımak için; telefonda ntfy uygulaması gerekmez
 const META = 'nobetTakip.sync';
-const RESEND_MS = 6 * 3600e3; // ntfy mesajları 12 saat saklar; arada bir tazele
+const RESEND_MS = 6 * 3600e3; // taşıyıcı kanal mesajları 12 saat saklar; arada bir tazele
+export const VAPID_PUBLIC = 'BMhHgoJXoOON-OCtU8yddX3dvny9Ui_WtiAeZujAUzy3SjWYHaYAP_85yrCVBbtcqC625jMHqxT_9xqdu2TEqxE';
 
 let timer = null;
 
@@ -24,15 +26,25 @@ export function reminderConfigured() {
   return !!store.get().settings.syncTopic;
 }
 
+export function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+export function pushReady() {
+  return pushSupported() && Notification.permission === 'granted' && !!store.get().settings.pushSub;
+}
+
 export function payloadOf(st) {
   const s = st.settings;
   const cut = isoDaysAgo(2);
   return {
-    v: 1,
+    v: 2,
     enabled: s.remindEnabled !== false,
     items: s.remindItems || 'Şarj aleti',
     remind: '18:30',
     start: s.startTime || '08:30',
+    push: s.pushSub || null,
+    test: s.pushTestAt || 0,
     shifts: st.shifts.map((x) => x.date).filter((d) => d >= cut).sort(),
   };
 }
@@ -65,24 +77,45 @@ export function lastSyncAt() {
   return readMeta().at || 0;
 }
 
-export async function sendTest() {
-  const s = store.get().settings;
-  if (!s.notifyTopic) return false;
-  try {
-    const r = await fetch(NTFY, {
-      method: 'POST',
-      body: JSON.stringify({ topic: s.notifyTopic, title: 'Nöbet Takip', message: 'Deneme: nöbet hatırlatmaları bu kanaldan gelecek.', tags: ['white_check_mark'] }),
-    });
-    return r.ok;
-  } catch { return false; }
+function b64ToBytes(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
-// Kurulum bağlantısı: .../#kurulum=<eşitleme kanalı>~<bildirim kanalı>
+// Bildirim izni iste ve bu telefonu abone yap
+export async function enablePush() {
+  if (!pushSupported()) return { ok: false, reason: 'desteklenmiyor' };
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') return { ok: false, reason: perm };
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
+  store.setSetting('pushSub', sub.toJSON());
+  return { ok: true };
+}
+
+// Açılışta abonelik değiştiyse (tarayıcı yenilemiş olabilir) güncelle
+export async function refreshPush() {
+  if (!pushSupported() || Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const cur = store.get().settings.pushSub;
+    if (sub && (!cur || cur.endpoint !== sub.endpoint)) store.setSetting('pushSub', sub.toJSON());
+  } catch { /* sessiz geç */ }
+}
+
+// Pi bir sonraki kontrolünde (en geç 2 dakika) deneme bildirimi yollar
+export function requestTest() {
+  store.setSetting('pushTestAt', Date.now());
+}
+
+// Kurulum bağlantısı: .../#kurulum=<eşitleme kanalı>  (eski biçim kanal~kanal da kabul)
 export function applySetupFromHash() {
-  const m = location.hash.match(/^#kurulum=([\w-]+)~([\w-]+)$/);
+  const m = location.hash.match(/^#kurulum=([\w-]+)(?:~[\w-]+)?$/);
   if (!m) return false;
   store.setSetting('syncTopic', m[1]);
-  store.setSetting('notifyTopic', m[2]);
   history.replaceState(null, '', location.pathname + '#ayarlar');
   return true;
 }
