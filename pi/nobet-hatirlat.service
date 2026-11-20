@@ -1,0 +1,10 @@
+[Unit]
+Description=Nöbet Takip: nöbet hatırlatması (ntfy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=grid
+WorkingDirectory=/home/grid/nobettakip
+ExecStart=/home/grid/evenerji/venv/bin/python nobet_hatirlat.py

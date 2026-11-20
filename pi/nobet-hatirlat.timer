@@ -1,0 +1,10 @@
+[Unit]
+Description=Nöbet Takip: hatırlatma kontrolü (2 dakikada bir)
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:0/2
+Persistent=true
+
+[Install]
+WantedBy=timers.target

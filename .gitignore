@@ -1,0 +1,5 @@
+pi/config.json
+pi/data.json
+pi/sent.json
+tools/__pycache__/
+pi/__pycache__/

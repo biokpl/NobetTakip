@@ -1,9 +1,9 @@
 // Çevrimdışı ve anında açılış: dosyalar telefondaki önbellekten gelir.
 // Yeni sürüm yayınlanınca (CACHE adı değişir) arka planda indirilir, sayfa bir kez yenilenir.
-const CACHE = 'nobet-v10';
+const CACHE = 'nobet-v11';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/app.css', './vendor/echarts.min.js',
-  './js/app.js', './js/store.js', './js/holidays.js', './js/analysis.js', './js/ui.js', './js/charts.js',
+  './js/app.js', './js/store.js', './js/holidays.js', './js/analysis.js', './js/ui.js', './js/charts.js', './js/reminder.js',
   './js/views/panel.js', './js/views/calendar.js', './js/views/analysis.js', './js/views/settings.js',
   './fonts/manrope-latin.woff2', './fonts/manrope-latin-ext.woff2',
   './icons/app-icon-192.png', './icons/app-icon-512.png', './icons/app-icon-maskable-512.png',

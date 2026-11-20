@@ -6,6 +6,8 @@ import { renderPanel } from './views/panel.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderAnalysis } from './views/analysis.js';
 import { renderSettings } from './views/settings.js';
+import { syncNow, scheduleSync, applySetupFromHash } from './reminder.js';
+import { toast } from './ui.js';
 
 const VIEWS = {
   panel: { title: 'Panel', render: renderPanel },
@@ -15,6 +17,7 @@ const VIEWS = {
 };
 
 const viewEl = document.getElementById('view');
+const setupDone = applySetupFromHash();
 let current = (location.hash.slice(1) in VIEWS) ? location.hash.slice(1) : 'panel';
 let analysis = null;
 
@@ -77,6 +80,11 @@ store.subscribe(() => {
 
 applyTheme();
 refresh({ keepScroll: false });
+
+// Nöbet hatırlatması: değişiklikleri Pi'ye ilet
+store.subscribe(scheduleSync);
+window.addEventListener('online', () => syncNow(false));
+setTimeout(() => syncNow(setupDone).then((r) => { if (setupDone) toast(r.ok ? 'Hatırlatma kuruldu' : 'Kuruldu, internet gelince eşitlenecek'); }), 800);
 
 // Gece yarısı / saat ilerledikçe geri sayımı tazele
 setInterval(() => { if (current === 'panel') refresh(); }, 5 * 60 * 1000);

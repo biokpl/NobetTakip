@@ -10,6 +10,10 @@ const DEFAULTS = {
     longGap: 70,
     viewYear: 'current', // 'current' | 'all' | 'YYYY'
     periodStart: '',
+    remindEnabled: true,
+    remindItems: 'Şarj aleti',
+    syncTopic: '',   // nöbet tarihlerini Pi'ye ileten gizli ntfy kanalı
+    notifyTopic: '', // hatırlatmanın geldiği ntfy kanalı
     theme: 'dark',
   },
   customHolidays: [], // { date, name, type }
