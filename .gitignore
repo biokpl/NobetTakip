@@ -3,3 +3,6 @@ pi/data.json
 pi/sent.json
 tools/__pycache__/
 pi/__pycache__/
+pi/durum.json
+pi/test.json
+pi/hatirlat.log

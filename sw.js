@@ -1,6 +1,6 @@
 // Çevrimdışı ve anında açılış: dosyalar telefondaki önbellekten gelir.
 // Yeni sürüm yayınlanınca (CACHE adı değişir) arka planda indirilir, sayfa bir kez yenilenir.
-const CACHE = 'nobet-v12';
+const CACHE = 'nobet-v13';
 const ASSETS = [
   './', './index.html', './manifest.json', './css/app.css', './vendor/echarts.min.js',
   './js/app.js', './js/store.js', './js/holidays.js', './js/analysis.js', './js/ui.js', './js/charts.js', './js/reminder.js',

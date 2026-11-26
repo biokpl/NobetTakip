@@ -86,6 +86,8 @@ store.subscribe(scheduleSync);
 window.addEventListener('online', () => syncNow(false));
 setTimeout(() => syncNow(setupDone).then((r) => { if (setupDone) toast(r.ok ? 'Bağlandı · şimdi bildirim izni ver' : 'Kaydedildi, internet gelince eşitlenecek'); }), 800);
 refreshPush();
+// Uygulamaya her dönüşte aboneliği denetle (izin kalkmış ya da abonelik silinmiş olabilir)
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshPush(); });
 
 // Gece yarısı / saat ilerledikçe geri sayımı tazele
 setInterval(() => { if (current === 'panel') refresh(); }, 5 * 60 * 1000);

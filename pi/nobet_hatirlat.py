@@ -19,6 +19,8 @@ CFG = json.loads((BASE / 'config.json').read_text(encoding='utf-8'))
 DATA = BASE / 'data.json'   # uygulamadan gelen son veri
 SENT = BASE / 'sent.json'   # gönderilen / silinen hatırlatmalar
 TEST = BASE / 'test.json'   # son yapılan deneme bildirimi
+DURUM = BASE / 'durum.json'  # geçersiz telefon aboneliği bilgisi
+LOG = BASE / 'hatirlat.log'
 VAPID_KEY = str(BASE / 'vapid_private.pem')
 NTFY = CFG.get('ntfy_url', 'https://ntfy.sh').rstrip('/')
 
@@ -37,6 +39,19 @@ def save(p, obj):
     tmp = p.with_suffix('.tmp')
     tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding='utf-8')
     tmp.replace(p)
+
+
+def log(*a, file=None):
+    """Hem journal'a hem kalıcı dosyaya yaz (Pi yeniden başlayınca journal siliniyor)."""
+    line = ' '.join(str(x) for x in a)
+    print(line, file=file or sys.stdout)
+    try:
+        with LOG.open('a', encoding='utf-8') as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {line}\n")
+        if LOG.stat().st_size > 200_000:  # son 1000 satırı tut
+            LOG.write_text('\n'.join(LOG.read_text(encoding='utf-8').splitlines()[-1000:]) + '\n', encoding='utf-8')
+    except OSError:
+        pass
 
 
 def hm(s, default):
@@ -88,9 +103,32 @@ class AbonelikBitti(Exception):
     pass
 
 
+DEAD = {}  # main() içinde durum.json'dan yüklenir
+
+
+def report_dead(ep):
+    """Uygulamaya 'abonelik geçersiz' haberi: eşitleme kanalına durum mesajı (6 saatte bir tekrar)."""
+    now = datetime.now()
+    if DEAD.get('dead') == ep and DEAD.get('reported') and now - datetime.fromisoformat(DEAD['reported']) < timedelta(hours=6):
+        return
+    try:
+        msg = {'kind': 'status', 'push': 'dead', 'endpoint': ep, 'ts': int(now.timestamp() * 1000)}
+        requests.post(f"{NTFY}/", json={'topic': CFG['sync_topic'], 'message': json.dumps(msg)}, timeout=20).raise_for_status()
+        DEAD['reported'] = now.isoformat(timespec='seconds')
+        log('uygulamaya abonelik geçersiz bilgisi gönderildi')
+    except Exception as e:
+        log('durum gönderilemedi:', e, file=sys.stderr)
+    DEAD['dead'] = ep
+    save(DURUM, DEAD)
+
+
 def push(sub, obj):
     """Uygulamanın kendi bildirimi (web push)."""
     from pywebpush import webpush, WebPushException
+    ep = sub.get('endpoint')
+    if DEAD.get('dead') == ep:  # bu abonelik zaten geçersiz; yeni abonelik gelene kadar deneme
+        report_dead(ep)
+        raise AbonelikBitti()
     try:
         webpush(subscription_info=sub, data=json.dumps(obj, ensure_ascii=False), vapid_private_key=VAPID_KEY,
                 vapid_claims={'sub': CFG.get('vapid_sub', 'https://biokpl.github.io')},
@@ -98,6 +136,8 @@ def push(sub, obj):
     except WebPushException as e:
         code = getattr(e.response, 'status_code', None)
         if code in (404, 410):
+            log('telefon aboneliği geçersiz (', code, ')', file=sys.stderr)
+            report_dead(ep)
             raise AbonelikBitti() from e
         raise
 
@@ -135,13 +175,14 @@ def delete(dstr, via, data):
 
 def main():
     now = datetime.now()
+    DEAD.update(load(DURUM, {}))
     data = load(DATA, {})
     try:
         data, changed = poll_sync(data)
         if changed:
             save(DATA, data)
     except Exception as e:  # ağ yoksa eldeki veriyle devam
-        print('eşitleme okunamadı:', e, file=sys.stderr)
+        log('eşitleme okunamadı:', e, file=sys.stderr)
 
     enabled = data.get('enabled', True)
     remind = hm(data.get('remind', '18:30'), time(18, 30))
@@ -156,9 +197,9 @@ def main():
         try:
             push(data['push'], {'type': 'test', 'tag': 'nobet-test', 'title': 'Nöbet Takip',
                                 'body': 'Deneme: nöbet hatırlatmaları bu şekilde gelecek.', 'url': CFG.get('app_url', './')})
-            print('deneme bildirimi gönderildi')
+            log('deneme bildirimi gönderildi')
         except Exception as e:
-            print('deneme gönderilemedi:', e, file=sys.stderr)
+            log('deneme gönderilemedi:', e, file=sys.stderr)
         save(TEST, {'done': data['test']})
 
     # Gönder: önceki gün 18:30 ile silinme saati arasında, henüz gönderilmediyse
@@ -174,11 +215,11 @@ def main():
                     via = publish(d, data, start)
                     sent[dstr] = {'sent': now.isoformat(timespec='seconds'), 'via': via}
                     dirty = True
-                    print('hatırlatma gönderildi:', dstr, via)
+                    log('hatırlatma gönderildi:', dstr, via)
                 except AbonelikBitti:
-                    print('telefon aboneliği geçersiz; uygulamada bildirim iznini yenile', file=sys.stderr)
+                    pass  # uygulamaya bildirildi; yeni abonelik gelince yeniden denenecek
                 except Exception as e:
-                    print('gönderilemedi:', dstr, e, file=sys.stderr)
+                    log('gönderilemedi:', dstr, e, file=sys.stderr)
 
     # Sil: nöbet günü geldiyse, nöbet kaldırıldıysa ya da hatırlatma kapatıldıysa
     for dstr, rec in list(sent.items()):
@@ -193,12 +234,12 @@ def main():
                 delete(dstr, rec.get('via', 'ntfy'), data)
                 rec['deleted'] = now.isoformat(timespec='seconds')
                 dirty = True
-                print('hatırlatma silindi:', dstr)
+                log('hatırlatma silindi:', dstr)
             except AbonelikBitti:
                 rec['deleted'] = now.isoformat(timespec='seconds')
                 dirty = True
             except Exception as e:
-                print('silinemedi:', dstr, e, file=sys.stderr)
+                log('silinemedi:', dstr, e, file=sys.stderr)
 
     # 60 günden eski kayıtları temizle
     for dstr in list(sent):

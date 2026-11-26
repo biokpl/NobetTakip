@@ -3,6 +3,7 @@ import { scoreLevel, fmtDate, fmtShort, dn, todayIso, demoShifts, DOW_SHORT, DOW
 import { icon, esc } from '../ui.js';
 import { store } from '../store.js';
 import { openDay } from './calendar.js';
+import { reminderProblem, enablePush } from '../reminder.js';
 
 const LEVEL_TEXT = { good: 'Adil görünüyor', mid: 'Dikkat gerektiriyor', bad: 'Adaletsiz görünüyor', none: 'Veri bekleniyor' };
 const ALERT_ICON = { danger: 'flame', warn: 'alert', info: 'info', ok: 'check' };
@@ -12,6 +13,21 @@ export function renderPanel(root, a, app) {
   const s = a.scores;
   const lvl = scoreLevel(s?.total);
   if (a.allProfiles.length) renderYearBar(root, a);
+
+  // Hatırlatma çalışmıyorsa en üstte uyar
+  const prob = reminderProblem();
+  if (prob) {
+    const w = document.createElement('section');
+    w.className = 'card';
+    w.innerHTML = `<div class="alert danger" style="margin:0"><div class="a-ic">${icon('bell')}</div><div><b>Nöbet hatırlatması çalışmıyor</b><p>${esc(prob)} Hatırlatmalar telefonuna gelmeyecek.</p></div></div>
+      <button class="btn primary" id="fixPush" style="margin-top:12px">${icon('bell')}Bildirimleri aç</button>`;
+    root.append(w);
+    w.querySelector('#fixPush').onclick = async () => {
+      if (Notification.permission === 'denied') { app.go('ayarlar'); return; }
+      const r = await enablePush();
+      if (!r.ok) app.go('ayarlar');
+    };
+  }
 
   // Puan kartı
   const hero = document.createElement('section');

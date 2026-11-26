@@ -95,15 +95,53 @@ export async function enablePush() {
   return { ok: true };
 }
 
-// Açılışta abonelik değiştiyse (tarayıcı yenilemiş olabilir) güncelle
+// Pi "abonelik geçersiz" dediyse o adresi döndür (eşitleme kanalındaki durum mesajı)
+async function piDeadEndpoint() {
+  const topic = store.get().settings.syncTopic;
+  if (!topic) return null;
+  try {
+    const r = await fetch(`${NTFY}${topic}/json?poll=1&since=12h`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    let dead = null;
+    for (const line of (await r.text()).split('\n')) {
+      try {
+        const ev = JSON.parse(line);
+        const m = JSON.parse(ev.message || '{}');
+        if (m.kind === 'status' && m.push === 'dead') dead = m.endpoint;
+      } catch { /* başka mesaj */ }
+    }
+    return dead;
+  } catch { return null; }
+}
+
+// Aboneliği denetle ve kendiliğinden onar.
+// İzin duruyorsa ama abonelik silinmiş ya da Pi geçersiz dediyse yeniden abone olur.
+// İzin kalktıysa saklı aboneliği temizler (Panel uyarı gösterir).
 export async function refreshPush() {
-  if (!pushSupported() || Notification.permission !== 'granted') return;
+  if (!pushSupported() || !reminderConfigured()) return;
+  const cur = store.get().settings.pushSub;
+  if (Notification.permission !== 'granted') {
+    if (cur) store.setSetting('pushSub', null);
+    return;
+  }
   try {
     const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    const cur = store.get().settings.pushSub;
-    if (sub && (!cur || cur.endpoint !== sub.endpoint)) store.setSetting('pushSub', sub.toJSON());
-  } catch { /* sessiz geç */ }
+    let sub = await reg.pushManager.getSubscription();
+    const dead = await piDeadEndpoint();
+    if (sub && dead && sub.endpoint === dead) { await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
+    if (!cur || cur.endpoint !== sub.endpoint) store.setSetting('pushSub', sub.toJSON());
+  } catch { /* sessiz geç; bir sonraki açılışta tekrar dener */ }
+}
+
+// Panel uyarısı için: hatırlatma açık ama bildirim gelmeyecekse nedenini döndür
+export function reminderProblem() {
+  const s = store.get().settings;
+  if (!s.syncTopic || s.remindEnabled === false) return null;
+  if (!pushSupported()) return 'Bu tarayıcı bildirim desteklemiyor.';
+  if (Notification.permission === 'denied') return 'Bildirim izni kapalı.';
+  if (Notification.permission !== 'granted' || !s.pushSub) return 'Bildirim izni verilmemiş.';
+  return null;
 }
 
 // Pi bir sonraki kontrolünde (en geç 2 dakika) deneme bildirimi yollar
